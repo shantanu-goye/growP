@@ -4,7 +4,7 @@ import cuid from "cuid";
 const prisma = new PrismaClient();
 
 // Create Deposit
-import { sendMail } from "../utils/sendMail"; // adjust as per your file structure
+import { sendMail } from "../utils/emailService.js"; // adjust as per your file structure
 
 export const createDeposit = async (req, res) => {
   try {
@@ -117,8 +117,7 @@ export const createDeposit = async (req, res) => {
 // Create Withdrawal
 // Ensure cuid is imported if not already
 
-import { sendMail } from "../utils/sendMail"; // adjust path if needed
-import cuid from "cuid"; // if not already globally available
+// if not already globally available
 
 export const createWithdrawal = async (req, res) => {
   try {

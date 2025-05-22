@@ -2,33 +2,59 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
+
 import { sendMail } from "../utils/emailService.js";
 
 const prisma = new PrismaClient();
 
-// Encryption Config
-const ENCRYPTION_KEY =
-  process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString("hex");
-const ENCRYPTION_IV =
-  process.env.ENCRYPTION_IV || crypto.randomBytes(16).toString("hex");
+const ENCRYPTION_KEY_ENV = process.env.ENCRYPTION_KEY;
 const ALGORITHM = "aes-256-cbc";
 
-// Encryption Helpers
+let ENCRYPTION_KEY_BUFFER;
+if (
+  ENCRYPTION_KEY_ENV &&
+  Buffer.from(ENCRYPTION_KEY_ENV, "hex").length === 32
+) {
+  ENCRYPTION_KEY_BUFFER = Buffer.from(ENCRYPTION_KEY_ENV, "hex");
+} else {
+  console.warn(
+    "ENCRYPTION_KEY environment variable not set or invalid. Using a default key for demonstration. THIS IS NOT SECURE FOR PRODUCTION!"
+  );
+  ENCRYPTION_KEY_BUFFER = Buffer.from(
+    "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+    "hex"
+  );
+}
+
 const encryptData = (text) => {
-  const iv = Buffer.from(ENCRYPTION_IV, "hex");
-  const key = Buffer.from(ENCRYPTION_KEY, "hex");
-  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(ALGORITHM, ENCRYPTION_KEY_BUFFER, iv);
   let encrypted = cipher.update(text, "utf8", "hex");
   encrypted += cipher.final("hex");
-  return encrypted;
+  return iv.toString("hex") + ":" + encrypted;
 };
 
 const decryptData = (encryptedText) => {
   try {
-    const iv = Buffer.from(ENCRYPTION_IV, "hex");
-    const key = Buffer.from(ENCRYPTION_KEY, "hex");
-    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-    let decrypted = decipher.update(encryptedText, "hex", "utf8");
+    if (!encryptedText) {
+      return null;
+    }
+    const [ivHex, encrypted] = encryptedText.split(":");
+    if (!ivHex || !encrypted) {
+      console.error(
+        "Invalid encrypted data format during decryption:",
+        encryptedText
+      );
+      return null;
+    }
+
+    const iv = Buffer.from(ivHex, "hex");
+    const decipher = crypto.createDecipheriv(
+      ALGORITHM,
+      ENCRYPTION_KEY_BUFFER,
+      iv
+    );
+    let decrypted = decipher.update(encrypted, "hex", "utf8");
     decrypted += decipher.final("utf8");
     return decrypted;
   } catch (error) {
@@ -37,7 +63,6 @@ const decryptData = (encryptedText) => {
   }
 };
 
-// Audit Log Helper
 const createAuditLog = async (action, userId = null, metadata = {}) => {
   try {
     await prisma.auditLog.create({
@@ -49,7 +74,6 @@ const createAuditLog = async (action, userId = null, metadata = {}) => {
     });
   } catch (error) {
     console.error("Audit log creation failed:", error);
-    // Don't throw error to avoid breaking main functionality
   }
 };
 
@@ -67,7 +91,6 @@ export const register = async (req, res) => {
       dob,
     } = req.body;
 
-    // Log registration attempt
     await createAuditLog("USER_REGISTRATION_ATTEMPT", null, {
       email,
       phoneNumber,
@@ -76,23 +99,15 @@ export const register = async (req, res) => {
       userAgent: req.get("User-Agent"),
     });
 
-    // Check if user exists by email or phoneNumber or encrypted accountNumber
-    const encryptedAccountNumber = encryptData(accountNumber);
-
-    const existingUser = await prisma.user.findFirst({
+    const existingUserByEmailOrPhone = await prisma.user.findFirst({
       where: {
-        OR: [
-          { email },
-          { phoneNumber },
-          { accountNumber: encryptedAccountNumber },
-        ],
+        OR: [{ email }, { phoneNumber }],
       },
     });
 
-    if (existingUser) {
-      // Log failed registration attempt
+    if (existingUserByEmailOrPhone) {
       await createAuditLog("USER_REGISTRATION_FAILED", null, {
-        reason: "User already exists",
+        reason: "User already exists (email or phone)",
         email,
         phoneNumber,
         timestamp: new Date().toISOString(),
@@ -101,8 +116,33 @@ export const register = async (req, res) => {
 
       return res.status(400).json({
         success: false,
-        message:
-          "User already exists with this email, phone number, or account number",
+        message: "User already exists with this email or phone number.",
+      });
+    }
+
+    const allUsers = await prisma.user.findMany({
+      select: { accountNumber: true },
+    });
+
+    const isAccountNumberTaken = allUsers.some((user) => {
+      const decryptedStoredAccountNumber = user.accountNumber
+        ? decryptData(user.accountNumber)
+        : null;
+      return decryptedStoredAccountNumber === accountNumber;
+    });
+
+    if (isAccountNumberTaken) {
+      await createAuditLog("USER_REGISTRATION_FAILED", null, {
+        reason: "User already exists (account number)",
+        email,
+        phoneNumber,
+        timestamp: new Date().toISOString(),
+        ip: req.ip || req.connection.remoteAddress,
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: "User already exists with this account number.",
       });
     }
 
@@ -118,29 +158,26 @@ export const register = async (req, res) => {
         customerId: `CUS${Date.now().toString().slice(-8)}${Math.floor(
           Math.random() * 1000
         )}`,
-        accountNumber: encryptedAccountNumber,
+        accountNumber: encryptData(accountNumber),
         ifscCode: encryptData(ifscCode),
         panNumber: encryptData(panNumber),
         aadhaarNumber: encryptData(aadhaarNumber),
       },
     });
 
-    // Create initial balance with proper plan field
     await prisma.balance.create({
       data: {
         userId: newUser.id,
-        plan: "seed", // Added required plan field
+        plan: "seed",
       },
     });
 
-    // Send verification email
     await sendMail({
       to: newUser.email,
       subject: "Welcome! Verify Your Email",
       html: `<p>Hello ${newUser.name},</p><p>Thank you for registering. Please <a href="${process.env.BASE_URL}/verify-email/${newUser.id}">verify your email</a>.</p>`,
     });
 
-    // Log successful registration
     await createAuditLog("USER_REGISTRATION_SUCCESS", newUser.id, {
       customerId: newUser.customerId,
       email: newUser.email,
@@ -158,7 +195,6 @@ export const register = async (req, res) => {
   } catch (error) {
     console.error("Registration error:", error);
 
-    // Log registration error
     await createAuditLog("USER_REGISTRATION_ERROR", null, {
       error: error.message,
       email: req.body?.email,
@@ -178,7 +214,6 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Log login attempt
     await createAuditLog("USER_LOGIN_ATTEMPT", null, {
       email,
       timestamp: new Date().toISOString(),
@@ -188,7 +223,6 @@ export const login = async (req, res) => {
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      // Log failed login - user not found
       await createAuditLog("USER_LOGIN_FAILED", null, {
         reason: "User not found",
         email,
@@ -204,7 +238,6 @@ export const login = async (req, res) => {
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      // Log failed login - invalid password
       await createAuditLog("USER_LOGIN_FAILED", user.id, {
         reason: "Invalid password",
         email,
@@ -219,7 +252,6 @@ export const login = async (req, res) => {
     }
 
     if (!user.isEmailVerified) {
-      // Log failed login - email not verified
       await createAuditLog("USER_LOGIN_FAILED", user.id, {
         reason: "Email not verified",
         email,
@@ -243,7 +275,6 @@ export const login = async (req, res) => {
       { expiresIn: "24h" }
     );
 
-    // Handle first login
     let isFirstLogin = false;
     if (user.firstLogin) {
       await prisma.user.update({
@@ -253,7 +284,6 @@ export const login = async (req, res) => {
       isFirstLogin = true;
     }
 
-    // Log successful login
     await createAuditLog("USER_LOGIN_SUCCESS", user.id, {
       customerId: user.customerId,
       email: user.email,
@@ -274,7 +304,6 @@ export const login = async (req, res) => {
   } catch (error) {
     console.error("Login error:", error);
 
-    // Log login error
     await createAuditLog("USER_LOGIN_ERROR", null, {
       error: error.message,
       email: req.body?.email,
@@ -293,9 +322,8 @@ export const login = async (req, res) => {
 export const getUserById = async (req, res) => {
   try {
     const { id } = req.params;
-    const requestingUserId = req.user?.id; // Assuming user info is added by auth middleware
+    const requestingUserId = req.user?.id;
 
-    // Log user data access attempt
     await createAuditLog("USER_DATA_ACCESS_ATTEMPT", requestingUserId, {
       targetUserId: id,
       timestamp: new Date().toISOString(),
@@ -308,7 +336,6 @@ export const getUserById = async (req, res) => {
     });
 
     if (!user) {
-      // Log failed access - user not found
       await createAuditLog("USER_DATA_ACCESS_FAILED", requestingUserId, {
         reason: "User not found",
         targetUserId: id,
@@ -324,14 +351,17 @@ export const getUserById = async (req, res) => {
 
     const decryptedUser = {
       ...user,
-      accountNumber: decryptData(user.accountNumber),
-      ifscCode: decryptData(user.ifscCode),
-      panNumber: decryptData(user.panNumber),
-      aadhaarNumber: decryptData(user.aadhaarNumber),
+      accountNumber: user.accountNumber
+        ? decryptData(user.accountNumber)
+        : null,
+      ifscCode: user.ifscCode ? decryptData(user.ifscCode) : null,
+      panNumber: user.panNumber ? decryptData(user.panNumber) : null,
+      aadhaarNumber: user.aadhaarNumber
+        ? decryptData(user.aadhaarNumber)
+        : null,
       password: undefined,
     };
 
-    // Log successful user data access
     await createAuditLog("USER_DATA_ACCESS_SUCCESS", requestingUserId, {
       targetUserId: id,
       targetCustomerId: user.customerId,
@@ -347,7 +377,6 @@ export const getUserById = async (req, res) => {
   } catch (error) {
     console.error("Fetch user error:", error);
 
-    // Log user data access error
     await createAuditLog("USER_DATA_ACCESS_ERROR", req.user?.id, {
       error: error.message,
       targetUserId: req.params?.id,
@@ -365,9 +394,8 @@ export const getUserById = async (req, res) => {
 
 export const getAllUsers = async (req, res) => {
   try {
-    const requestingUserId = req.user?.id; // Assuming admin user info is added by auth middleware
+    const requestingUserId = req.user?.id;
 
-    // Log bulk user data access attempt
     await createAuditLog("BULK_USER_DATA_ACCESS_ATTEMPT", requestingUserId, {
       timestamp: new Date().toISOString(),
       ip: req.ip || req.connection.remoteAddress,
@@ -380,14 +408,17 @@ export const getAllUsers = async (req, res) => {
 
     const decryptedUsers = users.map((user) => ({
       ...user,
-      accountNumber: decryptData(user.accountNumber),
-      ifscCode: decryptData(user.ifscCode),
-      panNumber: decryptData(user.panNumber),
-      aadhaarNumber: decryptData(user.aadhaarNumber),
+      accountNumber: user.accountNumber
+        ? decryptData(user.accountNumber)
+        : null,
+      ifscCode: user.ifscCode ? decryptData(user.ifscCode) : null,
+      panNumber: user.panNumber ? decryptData(user.panNumber) : null,
+      aadhaarNumber: user.aadhaarNumber
+        ? decryptData(user.aadhaarNumber)
+        : null,
       password: undefined,
     }));
 
-    // Log successful bulk user data access
     await createAuditLog("BULK_USER_DATA_ACCESS_SUCCESS", requestingUserId, {
       userCount: users.length,
       dataFields: ["profile", "balances", "personalInfo"],
@@ -402,7 +433,6 @@ export const getAllUsers = async (req, res) => {
   } catch (error) {
     console.error("Fetch users error:", error);
 
-    // Log bulk user data access error
     await createAuditLog("BULK_USER_DATA_ACCESS_ERROR", req.user?.id, {
       error: error.message,
       timestamp: new Date().toISOString(),
@@ -419,9 +449,8 @@ export const getAllUsers = async (req, res) => {
 
 export const verifyEmail = async (req, res) => {
   try {
-    const { token } = req.params; // This is actually the user ID based on your implementation
+    const { token } = req.params;
 
-    // Log email verification attempt
     await createAuditLog("EMAIL_VERIFICATION_ATTEMPT", token, {
       timestamp: new Date().toISOString(),
       ip: req.ip || req.connection.remoteAddress,
@@ -432,7 +461,6 @@ export const verifyEmail = async (req, res) => {
       data: { isEmailVerified: true },
     });
 
-    // Log successful email verification
     await createAuditLog("EMAIL_VERIFICATION_SUCCESS", token, {
       customerId: updatedUser.customerId,
       email: updatedUser.email,
@@ -447,7 +475,6 @@ export const verifyEmail = async (req, res) => {
   } catch (error) {
     console.error("Email verification error:", error);
 
-    // Log email verification error
     await createAuditLog("EMAIL_VERIFICATION_ERROR", req.params?.token, {
       error: error.message,
       timestamp: new Date().toISOString(),

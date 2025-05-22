@@ -5,9 +5,8 @@ import helmet from "helmet";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
-import xssClean from "xss-clean";
-import mongoSanitize from "express-mongo-sanitize";
-import { startRewardCronJob } from "./lib/rewardJob.js";
+
+// import { startRewardCronJob } from "./lib/rewardJob.js";
 
 // Load environment variables
 dotenv.config();
@@ -16,7 +15,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ------------------- MIDDLEWARES -------------------
-
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 // Enable CORS
 app.use(
   cors({
@@ -46,12 +46,6 @@ app.use(express.json());
 // Parse cookies
 app.use(cookieParser());
 
-// Prevent XSS attacks
-app.use(xssClean());
-
-// Prevent NoSQL injection
-app.use(mongoSanitize());
-
 // ------------------- ROUTES -------------------
 
 app.get("/", (req, res) => {
@@ -61,8 +55,11 @@ app.get("/", (req, res) => {
 
 // Routes
 import authRoutes from "./router/auth.route.js";
+import adminRoutes from "./router/admin.auth.route.js";
+import tranasctionRoute from "./router/transaction.route.js"
 app.use("/api/v1/user", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1/transactions",tranasctionRoute)
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
