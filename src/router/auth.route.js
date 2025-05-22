@@ -1,21 +1,18 @@
-// routes/authRoutes.js
-import express from "express";
 import {
   register,
   login,
-  getUserProfile,
+  getUserById,
+  getAllUsers,
   verifyEmail,
 } from "../Controller/auth.controller.js";
-import { authenticateUser } from "../middleware/authMiddleware.js";
+import { Router } from "express";
 
-const router = express.Router();
+const router = Router();
 
-// Auth routes
-router.post("/register", register);
-router.post("/login", login);
-router.get("/verify-email/:token", verifyEmail);
+router.post("/auth/register", register);
+router.post("/auth/login", login);
+router.get("/auth/users", getAllUsers);
+router.get("/auth/users/:id", getUserById);
+router.get("/auth/verify-email/:token", verifyEmail);
 
-// Protected route
-router.get("/profile", authenticateUser, getUserProfile);
-
-export default router;
+export default router; // ✅ correct placement

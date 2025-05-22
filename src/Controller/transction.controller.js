@@ -4,6 +4,8 @@ import cuid from "cuid";
 const prisma = new PrismaClient();
 
 // Create Deposit
+import { sendMail } from "../utils/sendMail"; // adjust as per your file structure
+
 export const createDeposit = async (req, res) => {
   try {
     const { amount, utr, transactionId } = req.body;
@@ -11,23 +13,56 @@ export const createDeposit = async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { plan: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        plan: true,
+        isActive: true,
+      },
     });
 
     if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
 
     const balance = await prisma.balance.findUnique({
       where: { userId_plan: { userId, plan: user.plan } },
     });
 
     if (!balance)
-      return res
-        .status(400)
-        .json({ success: false, message: "Balance not found" });
+      return res.status(400).json({
+        success: false,
+        message: "Balance not found",
+      });
 
+    const requiredAmount = {
+      seed: 10000,
+      plant: 50000,
+      tree: 100000,
+    }[user.plan];
+
+    let activatedNow = false;
+
+    // Check for activation
+    if (!user.isActive) {
+      if (amount >= requiredAmount) {
+        await prisma.user.update({
+          where: { id: userId },
+          data: { isActive: true },
+        });
+        activatedNow = true;
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: `Minimum deposit required for '${user.plan}' plan is ₹${requiredAmount}`,
+        });
+      }
+    }
+
+    // Create deposit entry
     const deposit = await prisma.deposit.create({
       data: {
         userId,
@@ -42,10 +77,35 @@ export const createDeposit = async (req, res) => {
       },
     });
 
-    res
-      .status(201)
-      .json({ success: true, message: "Deposit created", deposit });
+    // Update pending deposit balance
+    await prisma.balance.update({
+      where: { userId_plan: { userId, plan: user.plan } },
+      data: {
+        pendingDepositBalance: {
+          increment: amount,
+        },
+      },
+    });
+
+    // If user was already active, send email notification about deposit
+    if (user.isActive) {
+      await sendMail({
+        to: user.email,
+        subject: "Deposit Received",
+        html: `<p>Hello ${user.name},</p><p>We have received your deposit of ₹${amount}. It is currently pending approval.</p>`,
+      });
+    }
+
+    // Respond with appropriate message
+    return res.status(201).json({
+      success: true,
+      message: activatedNow
+        ? "Account activated and deposit is pending approval."
+        : "Deposit submitted and pending approval.",
+      deposit,
+    });
   } catch (error) {
+    console.error("Deposit error:", error);
     res.status(500).json({
       success: false,
       message: "Deposit failed",
@@ -57,26 +117,31 @@ export const createDeposit = async (req, res) => {
 // Create Withdrawal
 // Ensure cuid is imported if not already
 
+import { sendMail } from "../utils/sendMail"; // adjust path if needed
+import cuid from "cuid"; // if not already globally available
+
 export const createWithdrawal = async (req, res) => {
   try {
     const { amount, type } = req.body;
     const userId = req.user.id;
 
     if (!["full", "rewardOnly"].includes(type)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid withdrawal type" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid withdrawal type",
+      });
     }
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { plan: true },
+      select: { plan: true, name: true, email: true },
     });
 
     if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
 
     const balance = await prisma.balance.findUnique({
@@ -84,14 +149,14 @@ export const createWithdrawal = async (req, res) => {
     });
 
     if (!balance) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Balance not found" });
+      return res.status(400).json({
+        success: false,
+        message: "Balance not found",
+      });
     }
 
     const { balance: totalBalance, rewardBalance } = balance;
 
-    // Reject edge case: amount is greater than reward but less than full
     if (
       rewardBalance < amount &&
       amount <= totalBalance &&
@@ -104,14 +169,14 @@ export const createWithdrawal = async (req, res) => {
       });
     }
 
-    // Reject if insufficient balance based on type
     if (
       (type === "full" && totalBalance < amount) ||
       (type === "rewardOnly" && rewardBalance < amount)
     ) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Insufficient balance" });
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient balance",
+      });
     }
 
     const withdrawal = await prisma.withdrawal.create({
@@ -125,16 +190,41 @@ export const createWithdrawal = async (req, res) => {
       },
     });
 
+    // Deactivate user if full withdrawal
     if (type === "full") {
       await prisma.user.update({
         where: { id: userId },
         data: { isActive: false },
       });
+
+      // 📨 Send "account terminated" email
+      await sendMail({
+        to: user.email,
+        subject: "Withdrawal & Account Termination Notice",
+        html: `
+          <p>Hello ${user.name},</p>
+          <p>We’ve received your full withdrawal request of ₹${amount}. Your account is now <strong>terminated</strong>.</p>
+          <p>Please visit your bank branch for more information or to reactivate your account.</p>
+        `,
+      });
+    } else {
+      // 📨 Send general withdrawal email
+      await sendMail({
+        to: user.email,
+        subject: "Withdrawal Request Received",
+        html: `
+          <p>Hello ${user.name},</p>
+          <p>Your withdrawal request of ₹${amount} has been received and is currently pending review.</p>
+          <p>We will inform you once it is processed.</p>
+        `,
+      });
     }
 
-    return res
-      .status(201)
-      .json({ success: true, message: "Withdrawal created", withdrawal });
+    return res.status(201).json({
+      success: true,
+      message: "Withdrawal created successfully",
+      withdrawal,
+    });
   } catch (error) {
     console.error("Withdrawal error:", error);
     return res.status(500).json({
@@ -145,91 +235,295 @@ export const createWithdrawal = async (req, res) => {
   }
 };
 
+// utils/sendMail.js (assuming you already have this)
+// export async function sendMail({ to, subject, html }) { ... }
 
-// Update Deposit Status (Admin)
+// --- Admin: Update Deposit Status ---
 export const updateDepositStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, remarks } = req.body;
 
-    if (!['pending', 'proceed', 'failed'].includes(status)) {
-      return res.status(400).json({ success: false, message: 'Invalid status' });
+    if (!["pending", "proceed", "failed"].includes(status)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid status" });
     }
 
     const deposit = await prisma.deposit.findUnique({ where: { id } });
-    if (!deposit) return res.status(404).json({ success: false, message: 'Deposit not found' });
+    if (!deposit)
+      return res
+        .status(404)
+        .json({ success: false, message: "Deposit not found" });
 
     const updatedDeposit = await prisma.deposit.update({
       where: { id },
-      data: { status, remarks }
+      data: { status, remarks },
     });
 
-    if (status === 'proceed') {
-      const user = await prisma.user.findUnique({
-        where: { id: deposit.userId },
-        select: { plan: true }
-      });
+    const user = await prisma.user.findUnique({
+      where: { id: deposit.userId },
+      select: { name: true, email: true, plan: true },
+    });
 
+    if (status === "proceed") {
       const balance = await prisma.balance.findUnique({
-        where: { userId_plan: { userId: deposit.userId, plan: user.plan } }
+        where: { userId_plan: { userId: deposit.userId, plan: user.plan } },
       });
 
       await prisma.balance.update({
         where: { userId_plan: { userId: deposit.userId, plan: user.plan } },
-        data: { balance: balance.balance + deposit.amount }
+        data: { balance: balance.balance + deposit.amount },
       });
     }
 
-    res.status(200).json({ success: true, message: 'Deposit updated', deposit: updatedDeposit });
+    // Send Email Notification
+    await sendMail({
+      to: user.email,
+      subject: `Deposit ${status === "proceed" ? "Confirmed" : "Failed"}`,
+      html: `
+        <p>Hello ${user.name},</p>
+        <p>Your deposit of ₹${
+          deposit.amount
+        } has been <strong>${status}</strong>.</p>
+        ${
+          status === "proceed"
+            ? "<p>Funds have been added to your account balance.</p>"
+            : "<p>Please check your transaction and try again if needed.</p>"
+        }
+      `,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Deposit updated",
+      deposit: updatedDeposit,
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Update failed', error: error.message });
+    res
+      .status(500)
+      .json({ success: false, message: "Update failed", error: error.message });
   }
 };
 
-// Update Withdrawal Status (Admin)
+// --- Admin: Update Withdrawal Status ---
 export const updateWithdrawalStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, transactionId, remarks } = req.body;
 
-    if (!['pending', 'proceed', 'failed'].includes(status)) {
-      return res.status(400).json({ success: false, message: 'Invalid status' });
+    if (!["pending", "proceed", "failed"].includes(status)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid status" });
     }
 
     const withdrawal = await prisma.withdrawal.findUnique({ where: { id } });
-    if (!withdrawal) return res.status(404).json({ success: false, message: 'Withdrawal not found' });
+    if (!withdrawal)
+      return res
+        .status(404)
+        .json({ success: false, message: "Withdrawal not found" });
 
-    if (status === 'proceed' && !transactionId) {
-      return res.status(400).json({ success: false, message: 'Transaction ID required' });
+    if (status === "proceed" && !transactionId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Transaction ID required" });
     }
 
     const updatedWithdrawal = await prisma.withdrawal.update({
       where: { id },
-      data: { status, transactionId, remarks }
+      data: { status, transactionId, remarks },
     });
 
-    if (status === 'proceed') {
-      const user = await prisma.user.findUnique({
-        where: { id: withdrawal.userId },
-        select: { plan: true }
-      });
+    const user = await prisma.user.findUnique({
+      where: { id: withdrawal.userId },
+      select: { name: true, email: true, plan: true },
+    });
 
+    if (status === "proceed") {
       const balance = await prisma.balance.findUnique({
-        where: { userId_plan: { userId: withdrawal.userId, plan: user.plan } }
+        where: { userId_plan: { userId: withdrawal.userId, plan: user.plan } },
       });
 
-      const updateData = withdrawal.type === 'full'
-        ? { balance: balance.balance - withdrawal.amount }
-        : { rewardBalance: balance.rewardBalance - withdrawal.amount };
+      const updateData =
+        withdrawal.type === "full"
+          ? { balance: balance.balance - withdrawal.amount }
+          : { rewardBalance: balance.rewardBalance - withdrawal.amount };
 
       await prisma.balance.update({
         where: { userId_plan: { userId: withdrawal.userId, plan: user.plan } },
-        data: updateData
+        data: updateData,
       });
+
+      if (withdrawal.type === "full") {
+        await prisma.user.update({
+          where: { id: withdrawal.userId },
+          data: { isActive: false },
+        });
+      }
     }
 
-    res.status(200).json({ success: true, message: 'Withdrawal updated', withdrawal: updatedWithdrawal });
+    // Send Email Notification
+    await sendMail({
+      to: user.email,
+      subject: `Withdrawal ${status === "proceed" ? "Processed" : "Failed"}`,
+      html: `
+        <p>Hello ${user.name},</p>
+        <p>Your withdrawal of ₹${
+          withdrawal.amount
+        } has been <strong>${status}</strong>.</p>
+        ${
+          status === "proceed"
+            ? withdrawal.type === "full"
+              ? "<p>Your account has been deactivated due to full withdrawal. Visit your bank for more info or reactivation.</p>"
+              : "<p>The funds will be credited to your linked account shortly.</p>"
+            : "<p>Please check the details and try again.</p>"
+        }
+      `,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Withdrawal updated",
+      withdrawal: updatedWithdrawal,
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Update failed', error: error.message });
+    res
+      .status(500)
+      .json({ success: false, message: "Update failed", error: error.message });
+  }
+};
+
+// Get user's deposits
+export const getUserDeposits = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const deposits = await prisma.deposit.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        DepositeId: true,
+        createdAt: true,
+        updatedAt: true,
+        remarks: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      count: deposits.length,
+      deposits,
+    });
+  } catch (error) {
+    console.error("Get deposits error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch deposits",
+      error: error.message,
+    });
+  }
+};
+
+// Get user's withdrawals
+export const getUserWithdrawals = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const withdrawals = await prisma.withdrawal.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        amount: true,
+        type: true,
+        status: true,
+        withdrawalId: true,
+        createdAt: true,
+        updatedAt: true,
+        remarks: true,
+        transactionId: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      count: withdrawals.length,
+      withdrawals,
+    });
+  } catch (error) {
+    console.error("Get withdrawals error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch withdrawals",
+      error: error.message,
+    });
+  }
+};
+
+// Admin: Get all deposits
+export const getAllDeposits = async (req, res) => {
+  try {
+    const deposits = await prisma.deposit.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            plan: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      count: deposits.length,
+      deposits,
+    });
+  } catch (error) {
+    console.error("Get all deposits error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch deposits",
+      error: error.message,
+    });
+  }
+};
+
+// Admin: Get all withdrawals
+export const getAllWithdrawals = async (req, res) => {
+  try {
+    const withdrawals = await prisma.withdrawal.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            plan: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      count: withdrawals.length,
+      withdrawals,
+    });
+  } catch (error) {
+    console.error("Get all withdrawals error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch withdrawals",
+      error: error.message,
+    });
   }
 };
