@@ -1,22 +1,22 @@
-// import express from "express";
-// import {
-//   getRewardRates,
-//   updateRewardRate,
-//   getNonRewardDays,
-//   createNonRewardDay,
-//   deleteNonRewardDay,
-// } from "../Controller/rewardSettings.controller.js";
-// import { authenticateUser, authorizeAdmin } from "../middleware/authMiddleware.js";
+import express from "express";
+import {
+  getRewardRates,
+  updateRewardRate,
+  getNonRewardDays,
+  createNonRewardDay,
+  deleteNonRewardDay,
+} from "../Controller/rewardSettings.controller.js";
 
-// const router = express.Router();
 
-// // Reward Rate Settings Routes
-// router.get("/reward-rates", authenticateUser, getRewardRates);
-// router.put("/reward-rates/:plan", authenticateUser, authorizeAdmin, updateRewardRate);
+const router = express.Router();
 
-// // Non Reward Days Routes
-// router.get("/non-reward-days", authenticateUser, getNonRewardDays);
-// router.post("/non-reward-days", authenticateUser, authorizeAdmin, createNonRewardDay);
-// router.delete("/non-reward-days/:id", authenticateUser, authorizeAdmin, deleteNonRewardDay);
+// Reward Rate Settings Routes
+router.get("/reward-rates",  getRewardRates);
+router.put("/reward-rates/:plan", updateRewardRate);
 
-// export default router;
+// Non Reward Days Routes
+router.get("/non-reward-days",  getNonRewardDays);
+router.post("/non-reward-days",  createNonRewardDay);
+router.delete("/non-reward-days/:id", deleteNonRewardDay);
+
+export default router;

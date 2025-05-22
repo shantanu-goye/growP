@@ -3,7 +3,7 @@ import {
   NotificationType,
   NotificationChannel,
 } from "@prisma/client";
-import sendMail from "./sendMail"; // Your email sending utility
+import { sendMail } from "../utils/emailService.js"; // Your email sending utility
 
 const prisma = new PrismaClient();
 
@@ -53,8 +53,8 @@ export default async function handler(req, res) {
             userId: user.id,
             title,
             message,
-            type: NotificationType.GENERAL, // Assuming GENERAL for generic notification
-            channel: [NotificationChannel.EMAIL], // Email channel
+            type: GENERAL, // Assuming GENERAL for generic notification
+            channel: [EMAIL], // Email channel
             sentAt: new Date(),
             isRead: false,
             metadata: null,

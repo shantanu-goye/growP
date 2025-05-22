@@ -488,3 +488,60 @@ export const verifyEmail = async (req, res) => {
     });
   }
 };
+
+export const getProfileOfUser = async (req, res) => {
+  const { userId } = req.user;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      include: {
+        balances: true,
+        deposits: {
+          orderBy: { createdAt: "desc" },
+          take: 5, // recent deposits
+        },
+        withdrawals: {
+          orderBy: { createdAt: "desc" },
+          take: 5, // recent withdrawals
+        },
+        transactions: {
+          orderBy: { createdAt: "desc" },
+          take: 5, // optional: if you track transactions separately
+        },
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Profile fetched successfully",
+      profile: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        plan: user.plan,
+        createdAt: user.createdAt,
+        balances: user.balances,
+        recentDeposits: user.deposits,
+        recentWithdrawals: user.withdrawals,
+        recentTransactions: user.transactions ?? [],
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch profile",
+      error: error.message,
+    });
+  }
+};

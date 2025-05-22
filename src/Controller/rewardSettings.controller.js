@@ -20,9 +20,9 @@ export const getRewardRates = async (req, res) => {
 export const updateRewardRate = async (req, res) => {
   try {
     const { plan } = req.params;
-    const { rate } = req.body;
-    const adminId = req.user.id;
-
+    let { rate } = req.body;
+    const adminId = "test";
+    rate = Number(rate);
     if (!rate || isNaN(rate)) {
       return res.status(400).json({
         success: false,
@@ -54,6 +54,7 @@ export const updateRewardRate = async (req, res) => {
       data: updatedRate,
     });
   } catch (error) {
+    console.log(error);
     res.status(500).json({
       success: false,
       message: "Failed to update reward rate",
