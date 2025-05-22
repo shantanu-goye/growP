@@ -57,26 +57,12 @@ app.use(mongoSanitize());
 app.get("/", (req, res) => {
   res.send("Express ES6 app running with dotenv!");
 });
-
-// Background Cron Job
-startRewardCronJob();
+// startRewardCronJob();
 
 // Routes
 import authRoutes from "./router/auth.route.js";
 app.use("/api/v1/user", authRoutes);
-
-// ------------------- ERROR HANDLING (optional) -------------------
-
-app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err);
-  res.status(500).json({
-    success: false,
-    message: "Internal Server Error",
-  });
-});
-
-// ------------------- SERVER -------------------
-
+app.use("/api/v1/admin", adminRoutes);
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
