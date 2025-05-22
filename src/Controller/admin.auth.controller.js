@@ -11,10 +11,10 @@ const otpStore = new Map();
 // Register Admin - Only Super Admin can create Admins
 export const registerAdmin = async (req, res) => {
   try {
-    const requesterId = req.user.id;
+    const requesterId = req.admin.id;
     const requester = await prisma.admin.findUnique({ where: { id: requesterId } });
 
-    if (!requester || requester.role !== 'super_admin') {
+    if (!requester || requester.role !== 'superadmin') {
       return res.status(403).json({ success: false, message: 'Only super admins can create admins' });
     }
 
