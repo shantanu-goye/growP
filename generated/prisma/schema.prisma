@@ -1,0 +1,145 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String         @id @default(cuid())
+  customerId      String         @unique
+  customerNumber  Int            @default(autoincrement())
+  name            String
+  email           String         @unique
+  password        String
+  accountNumber   String         @unique
+  phoneNumber     String         @unique
+  plan            PlanType       @default(seed) // Current plan directly on user
+  isActive        Boolean        @default(false)
+  isEmailVerified Boolean        @default(false)
+  isPhoneVerified Boolean        @default(false)
+  firstLogin      Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  balances        Balance[]
+  withdrawals     Withdrawal[]
+  deposits        Deposit[]
+  notifications   Notification[]
+  fcmTokens       FCMToken[]
+}
+
+model Balance {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  plan           PlanType
+  balance        Float    @default(0)
+  pendingBalance Float    @default(0)
+  rewardBalance  Float    @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, plan])
+}
+
+enum PlanType {
+  plant
+  seed
+  tree
+}
+
+model Withdrawal {
+  id            String            @id @default(cuid())
+  userId        String
+  user          User              @relation(fields: [userId], references: [id])
+  amount        Float
+  balanceBefore Float
+  type          WithdrawalType
+  status        TransactionStatus
+  remarks       String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+}
+
+enum WithdrawalType {
+  full
+  rewardOnly
+}
+
+model Deposit {
+  id            String            @id @default(cuid())
+  userId        String
+  user          User              @relation(fields: [userId], references: [id])
+  amount        Float
+  balanceBefore Float
+  status        TransactionStatus
+  remarks       String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+}
+
+enum TransactionStatus {
+  pending
+  proceed
+  failed
+}
+
+model RewardRateSetting {
+  id        String   @id @default(cuid())
+  plan      PlanType @unique
+  rate      Float    @default(0.01) // 1% default rate
+  updatedAt DateTime @updatedAt
+}
+
+model NonRewardDay {
+  id        String   @id @default(cuid())
+  date      DateTime @unique
+  reason    String?
+  createdBy String // Admin identifier
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id       String                @id @default(cuid())
+  userId   String
+  user     User                  @relation(fields: [userId], references: [id])
+  title    String
+  message  String
+  type     NotificationType
+  channel  NotificationChannel[]
+  sentAt   DateTime              @default(now())
+  isRead   Boolean               @default(false)
+  metadata Json?
+}
+
+enum NotificationType {
+  reward
+  withdrawal
+  upgrade
+  general
+  alert
+}
+
+enum NotificationChannel {
+  email
+  push
+  sms
+}
+
+model FCMToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  platform  String // e.g., "android", "ios", "web"
+  createdAt DateTime @default(now())
+}
