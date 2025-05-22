@@ -41,15 +41,12 @@ export async function sendMail({
 
   if (template) {
     // Load and render template
-    const templatePath = path.resolve(
-      process.cwd(),
-      "templates",
-      `${template}.ejs`
-    );
+    const templatePath = path.resolve(process.cwd(), "templates", `${template}.ejs`);
+
     const templateExists = fs.existsSync(templatePath);
     if (!templateExists) {
       throw new Error(
-        `Template file ${template}.ejs not found in templates folder`
+        `Template file ${template}.ejs not found in templates folder at ${templatePath}`
       );
     }
 
