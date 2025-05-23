@@ -1,22 +1,42 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { PiggyBank, Eye, EyeOff } from "lucide-react";
+// import { useNavigate } from "react-router-dom"; // Uncomment if using navigation
 
 const Login = () => {
+  // const navigate = useNavigate(); // Uncomment if using navigation
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async () => {
-    setIsLoading(true);
+    if (!email || !password) {
+      return alert("Please enter both email and password.");
+    }
 
+    setIsLoading(true);
     try {
-      // Simulate login process
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      console.log("Login attempt:", { email, password });
-      alert("Login successful! (Demo mode)");
+      const res = await fetch("http://localhost:4000/api/v1/user/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Login failed");
+      }
+
+      // Save token and user info
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+
+      alert("Login successful!");
+
+      // navigate("/dashboard"); // Optional navigation after login
     } catch (error) {
-      alert("Login failed. Please try again.");
+      alert(error.message || "Login error occurred");
     } finally {
       setIsLoading(false);
     }
@@ -29,7 +49,6 @@ const Login = () => {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
-        {/* Logo and Header */}
         <div className="text-center">
           <div className="mx-auto w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center mb-4">
             <PiggyBank className="w-8 h-8 text-white" />
@@ -38,7 +57,6 @@ const Login = () => {
           <p className="text-gray-600 mt-2">Grow your wealth with smart investments</p>
         </div>
 
-        {/* Login Form */}
         <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-gray-900">Sign In</h2>
@@ -46,7 +64,7 @@ const Login = () => {
               Enter your credentials to access your account
             </p>
           </div>
-          
+
           <div className="space-y-6">
             <div className="space-y-2">
               <label htmlFor="email" className="block text-sm font-medium text-gray-900">
@@ -98,15 +116,16 @@ const Login = () => {
             </div>
 
             <button
-              type="submit"
+              type="button"
+              onClick={handleSubmit}
               className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold text-lg rounded-md hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              disabled={isLoading}
-            ></button>
+              disabled={isLoading || !email || !password}
+            >
               {isLoading ? "Signing in..." : "Sign In"}
-            </div>
+            </button>
+          </div>
         </div>
 
-        {/* Demo Credentials */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
           <h3 className="font-semibold text-gray-900 mb-2">Demo Credentials:</h3>
           <p className="text-sm text-gray-600">

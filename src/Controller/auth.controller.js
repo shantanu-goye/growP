@@ -490,13 +490,14 @@ export const verifyEmail = async (req, res) => {
 };
 
 export const getProfileOfUser = async (req, res) => {
-  const { userId } = req.user;
-
+  const { id } = req.user;
+  console.log(req.user);
   try {
     const user = await prisma.user.findUnique({
       where: {
-        id: userId,
+        id: id,
       },
+
       include: {
         balances: true,
         deposits: {
@@ -506,10 +507,6 @@ export const getProfileOfUser = async (req, res) => {
         withdrawals: {
           orderBy: { createdAt: "desc" },
           take: 5, // recent withdrawals
-        },
-        transactions: {
-          orderBy: { createdAt: "desc" },
-          take: 5, // optional: if you track transactions separately
         },
       },
     });
@@ -538,6 +535,8 @@ export const getProfileOfUser = async (req, res) => {
       },
     });
   } catch (error) {
+    console.log(error);
+
     res.status(500).json({
       success: false,
       message: "Failed to fetch profile",
