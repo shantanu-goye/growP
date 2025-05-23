@@ -117,11 +117,10 @@ export const createDeposit = async (req, res) => {
 // Create Withdrawal
 // Ensure cuid is imported if not already
 
-// if not already globally available
 
 export const createWithdrawal = async (req, res) => {
   try {
-    const { amount, type } = req.body;
+    const { type } = req.body;
     const userId = req.user.id;
 
     if (!["full", "rewardOnly"].includes(type)) {
@@ -131,6 +130,7 @@ export const createWithdrawal = async (req, res) => {
       });
     }
 
+    // Fetch user with plan info
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { plan: true, name: true, email: true },
@@ -143,77 +143,80 @@ export const createWithdrawal = async (req, res) => {
       });
     }
 
-    const balance = await prisma.balance.findUnique({
-      where: { userId_plan: { userId, plan: user.plan } },
+    // Fetch the first Balance record of the user
+    const balances = await prisma.balance.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+      take: 1,
     });
 
-    if (!balance) {
+    if (balances.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Balance not found",
+        message: "No balance record found",
       });
     }
 
-    const { balance: totalBalance, rewardBalance } = balance;
+    const balance = balances[0];
+    const { balance: totalBalance, rewardBalance, plan } = balance;
 
-    if (
-      rewardBalance < amount &&
-      amount <= totalBalance &&
-      type === "rewardOnly"
-    ) {
+    const minRequiredBalance = {
+      seed: 5000,
+      plant: 10000,
+      tree: 15000,
+    };
+
+    const minBalance = minRequiredBalance[plan];
+    const applicableBalance = type === "rewardOnly" ? rewardBalance : totalBalance;
+
+    if (applicableBalance < minBalance) {
       return res.status(400).json({
         success: false,
-        message:
-          "Partial reward withdrawals are not allowed. Choose full withdrawal instead.",
+        message: `Minimum ₹${minBalance} required in your ${type === "rewardOnly" ? "reward " : ""}balance for the ${plan} plan.`,
       });
     }
 
-    if (
-      (type === "full" && totalBalance < amount) ||
-      (type === "rewardOnly" && rewardBalance < amount)
-    ) {
+    if (applicableBalance <= 0) {
       return res.status(400).json({
         success: false,
-        message: "Insufficient balance",
+        message: "Insufficient balance to withdraw",
       });
     }
 
     const withdrawal = await prisma.withdrawal.create({
       data: {
         userId,
-        amount,
-        balanceBefore: type === "full" ? totalBalance : rewardBalance,
+        amount: applicableBalance,
+        balanceBefore: applicableBalance,
         withdrawalId: cuid(),
+        transactionId: cuid(),
         type,
         status: "pending",
       },
     });
 
-    // Deactivate user if full withdrawal
     if (type === "full") {
       await prisma.user.update({
         where: { id: userId },
         data: { isActive: false },
       });
 
-      // 📨 Send "account terminated" email
       await sendMail({
         to: user.email,
         subject: "Withdrawal & Account Termination Notice",
         html: `
           <p>Hello ${user.name},</p>
-          <p>We’ve received your full withdrawal request of ₹${amount}. Your account is now <strong>terminated</strong>.</p>
+          <p>We’ve received your full withdrawal request of ₹${applicableBalance}. Your account is now <strong>terminated</strong>.</p>
           <p>Please visit your bank branch for more information or to reactivate your account.</p>
         `,
       });
     } else {
-      // 📨 Send general withdrawal email
       await sendMail({
         to: user.email,
         subject: "Withdrawal Request Received",
         html: `
           <p>Hello ${user.name},</p>
-          <p>Your withdrawal request of ₹${amount} has been received and is currently pending review.</p>
+          <p>Your reward withdrawal request of ₹${applicableBalance} has been received and is currently pending review.</p>
           <p>We will inform you once it is processed.</p>
         `,
       });
@@ -233,6 +236,7 @@ export const createWithdrawal = async (req, res) => {
     });
   }
 };
+
 
 // utils/sendMail.js (assuming you already have this)
 // export async function sendMail({ to, subject, html }) { ... }
