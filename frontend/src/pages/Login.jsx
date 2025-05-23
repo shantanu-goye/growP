@@ -1,46 +1,60 @@
 import React, { useState } from "react";
-import { PiggyBank, Eye, EyeOff } from "lucide-react";
-// import { useNavigate } from "react-router-dom"; // Uncomment if using navigation
-
+import logo from "../assets/Untitled_design-removebg-preview.png"
+import { useNavigate } from 'react-router-dom';
 const Login = () => {
-  // const navigate = useNavigate(); // Uncomment if using navigation
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+const navigate = useNavigate(); // ← this line is missing
 
-  const handleSubmit = async () => {
-    if (!email || !password) {
-      return alert("Please enter both email and password.");
+const handleSubmit = async () => {
+  if (!email || !password) {
+    return alert("Please enter both email and password.");
+  }
+
+  if (!acceptedTerms) {
+    return alert("You must accept the Terms and Conditions.");
+  }
+
+  setIsLoading(true);
+  try {
+    const myHeaders = new Headers();
+    myHeaders.append("Content-Type", "application/x-www-form-urlencoded");
+
+    const urlencoded = new URLSearchParams();
+    urlencoded.append("email", email);
+    urlencoded.append("password", password);
+    urlencoded.append("type", "full");
+
+    const response = await fetch("http://localhost:4000/api/v1/user/auth/login", {
+      method: "POST",
+      headers: myHeaders,
+      body: urlencoded,
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.message || "Login failed");
     }
 
-    setIsLoading(true);
-    try {
-      const res = await fetch("http://localhost:4000/api/v1/user/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+    // ✅ Store token and user info in localStorage
+    localStorage.setItem("token", result.token);
+    localStorage.setItem("user", JSON.stringify(result.user));
 
-      const data = await res.json();
+    alert("Login successful!");
+    navigate("/dashboard");
+  } catch (error) {
+    alert(error.message || "Login error occurred");
+  } finally {
+    setIsLoading(false);
+  }
+};
 
-      if (!res.ok) {
-        throw new Error(data.message || "Login failed");
-      }
 
-      // Save token and user info
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
 
-      alert("Login successful!");
-
-      // navigate("/dashboard"); // Optional navigation after login
-    } catch (error) {
-      alert(error.message || "Login error occurred");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleForgotPassword = () => {
     alert("Forgot password functionality would be implemented here");
@@ -48,11 +62,21 @@ const Login = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-8">
-        <div className="text-center">
-          <div className="mx-auto w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center mb-4">
-            <PiggyBank className="w-8 h-8 text-white" />
+      <div className="w-full max-w-md space-y-3">
+        <div className="text-center ">
+          {/* Fixed logo container */}
+          <div className="mx-auto w-60 h-40 flex items-center justify-center">
+            {/* In your actual code, replace this placeholder with your logo image */}
+            <div className="">
+         <img 
+  src={logo} 
+  alt="GroWP Logo" 
+  className="w-40 h-40 object-contain mx-auto"
+/>
+
+            </div>
           </div>
+
           <h1 className="text-3xl font-bold text-gray-900">Welcome to GroWP</h1>
           <p className="text-gray-600 mt-2">Grow your wealth with smart investments</p>
         </div>
@@ -100,7 +124,29 @@ const Login = () => {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  {showPassword ? (
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M17.94 17.94A10.001 10.001 0 0 0 21 12C21 7.03 16.97 3 12 3a9.96 9.96 0 0 0-6.5 2.48"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      />
+                      <path
+                        d="M1 1l22 22"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      />
+                      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+                    </svg>
+                  )}
                 </button>
               </div>
             </div>
@@ -115,23 +161,36 @@ const Login = () => {
               </button>
             </div>
 
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="terms"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="terms" className="text-sm text-gray-700">
+                I accept the{" "}
+                <a
+                  href="/terms-of-service"
+                  className="text-blue-600 hover:text-blue-700 underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Terms and Conditions
+                </a>
+              </label>
+            </div>
+
             <button
               type="button"
               onClick={handleSubmit}
-              className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold text-lg rounded-md hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              disabled={isLoading || !email || !password}
+              className="w-full h-12 bg-blue-600 text-white font-semibold text-lg rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              disabled={isLoading || !email || !password || !acceptedTerms}
             >
               {isLoading ? "Signing in..." : "Sign In"}
             </button>
           </div>
-        </div>
-
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="font-semibold text-gray-900 mb-2">Demo Credentials:</h3>
-          <p className="text-sm text-gray-600">
-            Email: <span className="font-mono bg-white px-1 rounded">demo@growp.com</span><br />
-            Password: <span className="font-mono bg-white px-1 rounded">password123</span>
-          </p>
         </div>
       </div>
     </div>

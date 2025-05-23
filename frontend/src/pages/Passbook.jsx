@@ -2,13 +2,8 @@ import { useState, useMemo, useEffect } from 'react';
 
 export default function TransactionPassbook() {
   // State for API data
-  const [apiData, setApiData] = useState({
-    status: '',
-    data: {
-      deposits: [],
-      withdrawals: []
-    }
-  });
+  const [deposits, setDeposits] = useState([]);
+  const [withdrawals, setWithdrawals] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -17,31 +12,59 @@ export default function TransactionPassbook() {
   const [searchTerm, setSearchTerm] = useState('');
   const itemsPerPage = 10;
 
-  // Fetch transactions from API
+  // Fetch transactions from separate APIs
   useEffect(() => {
     const fetchTransactions = async () => {
       try {
         setIsLoading(true);
         setError(null);
-  
-        const response = await fetch('https://r5qcmks6-3000.inc1.devtunnels.ms/api/v1/balance/transactions', {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          },
-        });
-  
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+
+        // Get token from localStorage (you might need to adjust this based on your auth setup)
+        const token = localStorage?.getItem('token') || '';
+
+        // Fetch deposits and withdrawals in parallel
+        const [depositsResponse, withdrawalsResponse] = await Promise.all([
+          fetch('http://localhost:4000/api/v1/transactions/deposits', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': token ? `Bearer ${token}` : '',
+            },
+          }),
+          fetch('http://localhost:4000/api/v1/transactions/withdrawals', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': token ? `Bearer ${token}` : '',
+            },
+          })
+        ]);
+
+        // Check if both requests were successful
+        if (!depositsResponse.ok) {
+          throw new Error(`Deposits API error! status: ${depositsResponse.status}`);
         }
-  
-        const result = await response.json();
-        if (result.status === 'success') {
-          setApiData(result);
+        if (!withdrawalsResponse.ok) {
+          throw new Error(`Withdrawals API error! status: ${withdrawalsResponse.status}`);
+        }
+
+        // Parse the responsesz
+        const depositsData = await depositsResponse.json();
+        const withdrawalsData = await withdrawalsResponse.json();
+
+        // Handle different response structures
+        if (depositsData.success) {
+          setDeposits(depositsData.deposits || []);
         } else {
-          throw new Error(result.message || 'API request failed');
+          throw new Error(depositsData.message || 'Failed to fetch deposits');
         }
+
+        if (withdrawalsData.success) {
+          setWithdrawals(withdrawalsData.withdrawals || []);
+        } else {
+          throw new Error(withdrawalsData.message || 'Failed to fetch withdrawals');
+        }
+
       } catch (err) {
         setError(err.message);
         console.error('Error fetching transactions:', err);
@@ -49,38 +72,41 @@ export default function TransactionPassbook() {
         setIsLoading(false);
       }
     };
-  
+
     fetchTransactions();
   }, []);
-  
 
   // Prepare transactions
   const allTransactions = useMemo(() => {
-    const deposits = apiData.data.deposits.map(deposit => ({
+    const depositTransactions = deposits.map(deposit => ({
       ...deposit,
       type: 'Deposit',
       description: deposit.remarks || 'Deposit',
       amount: deposit.amount,
       debit: null,
       credit: deposit.amount,
-      status: deposit.status || 'COMPLETED'
+      status: deposit.status || 'PENDING',
+      transactionId: deposit.depositId || deposit.transactionId || deposit.id,
+      createdAt: deposit.createdAt
     }));
     
-    const withdrawals = apiData.data.withdrawals.map(withdrawal => ({
+    const withdrawalTransactions = withdrawals.map(withdrawal => ({
       ...withdrawal,
       type: 'Withdrawal',
       description: withdrawal.remarks || 'Withdrawal',
       amount: withdrawal.amount,
       debit: withdrawal.amount,
       credit: null,
-      status: withdrawal.status || 'PENDING'
+      status: withdrawal.status || 'PENDING',
+      transactionId: withdrawal.withdrawalId || withdrawal.transactionId || withdrawal.id,
+      createdAt: withdrawal.createdAt
     }));
     
     // Combine and sort by date (newest first)
-    return [...deposits, ...withdrawals].sort((a, b) => 
+    return [...depositTransactions, ...withdrawalTransactions].sort((a, b) => 
       new Date(b.createdAt) - new Date(a.createdAt)
     );
-  }, [apiData]);
+  }, [deposits, withdrawals]);
 
   // Filter transactions based on search term
   const filteredTransactions = useMemo(() => {
@@ -88,9 +114,10 @@ export default function TransactionPassbook() {
     
     const lowerCaseSearch = searchTerm.toLowerCase();
     return allTransactions.filter(transaction => 
-      transaction.transactionId.toLowerCase().includes(lowerCaseSearch) ||
+      transaction.transactionId?.toLowerCase().includes(lowerCaseSearch) ||
       (transaction.description?.toLowerCase().includes(lowerCaseSearch)) ||
-      transaction.amount.toString().includes(searchTerm)
+      transaction.amount.toString().includes(searchTerm) ||
+      transaction.type.toLowerCase().includes(lowerCaseSearch)
     );
   }, [allTransactions, searchTerm]);
 
@@ -107,9 +134,9 @@ export default function TransactionPassbook() {
     
     let balance = 0;
     const transactions = orderedTransactions.map(transaction => {
-      if (transaction.type === 'Deposit') {
+      if (transaction.type === 'Deposit' && transaction.status === 'completed') {
         balance += transaction.amount;
-      } else {
+      } else if (transaction.type === 'Withdrawal' && transaction.status === 'completed') {
         balance -= transaction.amount;
       }
       return { ...transaction, balance };
@@ -193,10 +220,10 @@ export default function TransactionPassbook() {
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="Search by ID, Description, or Amount"
+                  placeholder="Search by ID, Description, Amount, or Type"
                   value={searchTerm}
                   onChange={handleSearch}
-                  className="p-2 pl-3 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-64 text-gray-700"
+                  className="p-2 pl-3 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-80 text-gray-700"
                 />
                 <span className="absolute right-3 top-2.5 text-gray-500">
                   {searchTerm ? (
@@ -211,8 +238,10 @@ export default function TransactionPassbook() {
                   )}
                 </span>
               </div>
-              <div className="text-sm text-gray-600">
-                {filteredTransactions.length} transactions found
+              <div className="flex gap-4 text-sm text-gray-600">
+                <div>Total Deposits: {deposits.length}</div>
+                <div>Total Withdrawals: {withdrawals.length}</div>
+                <div>Found: {filteredTransactions.length} transactions</div>
               </div>
             </div>
           </div>
@@ -234,8 +263,8 @@ export default function TransactionPassbook() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedTransactions.length > 0 ? (
-                  paginatedTransactions.map((transaction) => (
-                    <tr key={transaction.id} className="hover:bg-gray-50">
+                  paginatedTransactions.map((transaction, index) => (
+                    <tr key={transaction.id || index} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                         {formatDate(transaction.createdAt)}
                       </td>
@@ -259,13 +288,15 @@ export default function TransactionPassbook() {
                         {transaction.credit ? `₹${transaction.credit.toFixed(2)}` : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-right text-gray-900">
-                      ₹{transaction.balance.toFixed(2)}
+                        ₹{transaction.balance.toFixed(2)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          transaction.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                          transaction.status?.toLowerCase() === 'completed' ? 'bg-green-100 text-green-800' : 
+                          transaction.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
                         }`}>
-                          {transaction.status}
+                          {transaction.status?.toUpperCase() || 'UNKNOWN'}
                         </span>
                       </td>
                     </tr>
