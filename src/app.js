@@ -56,10 +56,14 @@ app.get("/", (req, res) => {
 // Routes
 import authRoutes from "./router/auth.route.js";
 import adminRoutes from "./router/admin.auth.route.js";
-import tranasctionRoute from "./router/transaction.route.js"
+import tranasctionRoute from "./router/transaction.route.js";
+import rewardSettingRoute from "./router/rewardSettings.route.js";
+import notifcationRouter from "./router/notification.route.js"
 app.use("/api/v1/user", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
-app.use("/api/v1/transactions",tranasctionRoute)
+app.use("/api/v1/transactions", tranasctionRoute);
+app.use("/api/v1/rewardRatesettings", rewardSettingRoute);
+app.use("/api/v1/notification", notifcationRouter);
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });

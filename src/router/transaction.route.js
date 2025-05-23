@@ -12,9 +12,15 @@ import { authenticateToken } from "../middleware/authMiddleware.js";
 import express from "express";
 
 const router = express.Router();
-router.post('/deposit', authenticateToken, createDeposit);
-router.post('/withdrawal', authenticateToken, createWithdrawal);
-router.get('/deposits', authenticateToken, getUserDeposits);
-router.get('/withdrawals', authenticateToken, getUserWithdrawals);
+router.post("/deposit", authenticateToken, createDeposit);
+router.post("/withdrawal", authenticateToken, createWithdrawal);
+router.get("/deposits", authenticateToken, getUserDeposits);
+router.get("/withdrawals", authenticateToken, getUserWithdrawals);
 
-export default router
+//prcotede routes for admin
+router.put("/admin/deposits/:id", updateDepositStatus);
+router.put("/admin/withdrawals/:id", updateWithdrawalStatus);
+router.get("/admin/deposits", getAllDeposits);
+router.get("/admin/withdrawals", getAllWithdrawals);
+
+export default router;

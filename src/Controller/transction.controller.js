@@ -10,6 +10,7 @@ export const createDeposit = async (req, res) => {
   try {
     const { amount, utr, transactionId } = req.body;
     const userId = req.user.id;
+    const newAmount = Number(amount);
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -22,21 +23,23 @@ export const createDeposit = async (req, res) => {
       },
     });
 
-    if (!user)
+    if (!user) {
       return res.status(404).json({
         success: false,
         message: "User not found",
       });
+    }
 
     const balance = await prisma.balance.findUnique({
       where: { userId_plan: { userId, plan: user.plan } },
     });
 
-    if (!balance)
+    if (!balance) {
       return res.status(400).json({
         success: false,
         message: "Balance not found",
       });
+    }
 
     const requiredAmount = {
       seed: 10000,
@@ -44,59 +47,62 @@ export const createDeposit = async (req, res) => {
       tree: 100000,
     }[user.plan];
 
-    let activatedNow = false;
+    const activatedNow = !user.isActive && newAmount >= requiredAmount;
 
-    // Check for activation
-    if (!user.isActive) {
-      if (amount >= requiredAmount) {
-        await prisma.user.update({
-          where: { id: userId },
-          data: { isActive: true },
-        });
-        activatedNow = true;
-      } else {
-        return res.status(400).json({
-          success: false,
-          message: `Minimum deposit required for '${user.plan}' plan is ₹${requiredAmount}`,
-        });
-      }
-    }
-
-    // Create deposit entry
-    const deposit = await prisma.deposit.create({
-      data: {
-        userId,
-        amount,
-        balanceBefore: balance.balance,
-        transactionId,
-        DepositeId: `TXN-DP-${Date.now()}-${Math.random()
-          .toString(36)
-          .substr(2, 6)}`,
-        utr: utr || "",
-        status: "pending",
-      },
-    });
-
-    // Update pending deposit balance
-    await prisma.balance.update({
-      where: { userId_plan: { userId, plan: user.plan } },
-      data: {
-        pendingDepositBalance: {
-          increment: amount,
-        },
-      },
-    });
-
-    // If user was already active, send email notification about deposit
-    if (user.isActive) {
-      await sendMail({
-        to: user.email,
-        subject: "Deposit Received",
-        html: `<p>Hello ${user.name},</p><p>We have received your deposit of ₹${amount}. It is currently pending approval.</p>`,
+    if (!user.isActive && !activatedNow) {
+      return res.status(400).json({
+        success: false,
+        message: `Minimum deposit required for '${user.plan}' plan is ₹${requiredAmount}`,
       });
     }
 
-    // Respond with appropriate message
+    const depositId = `TXN-DP-${Date.now()}-${Math.random()
+      .toString(36)
+      .substr(2, 6)}`;
+
+    const transactionQueries = [];
+
+    if (activatedNow) {
+      transactionQueries.push(
+        prisma.user.update({
+          where: { id: userId },
+          data: { isActive: true },
+        })
+      );
+    }
+
+    transactionQueries.push(
+      prisma.deposit.create({
+        data: {
+          userId,
+          amount: newAmount,
+          balanceBefore: balance.balance,
+          transactionId,
+          depositId,
+          utr: utr || "",
+          status: "pending",
+        },
+      }),
+      prisma.balance.update({
+        where: { userId_plan: { userId, plan: user.plan } },
+        data: {
+          pendingDepositBalance: {
+            increment: newAmount,
+          },
+        },
+      })
+    );
+
+    const [, deposit] = await prisma.$transaction(transactionQueries);
+
+    if (user.isActive || activatedNow) {
+      await sendMail({
+        to: user.email,
+        subject: "Deposit Received",
+        html: `<p>Hello ${user.name},</p><p>We have received your deposit of ₹${newAmount}. It is currently pending approval.</p>`,
+      });
+    }
+
     return res.status(201).json({
       success: true,
       message: activatedNow
@@ -106,9 +112,19 @@ export const createDeposit = async (req, res) => {
     });
   } catch (error) {
     console.error("Deposit error:", error);
-    res.status(500).json({
+
+    let message = "Deposit failed";
+
+    if (
+      error.code === "ECONNREFUSED" ||
+      error.message.includes("Can't reach database")
+    ) {
+      message = "Database connection failed. Please try again later.";
+    }
+
+    return res.status(500).json({
       success: false,
-      message: "Deposit failed",
+      message,
       error: error.message,
     });
   }
@@ -254,31 +270,53 @@ export const updateDepositStatus = async (req, res) => {
     }
 
     const deposit = await prisma.deposit.findUnique({ where: { id } });
-    if (!deposit)
+    if (!deposit) {
       return res
         .status(404)
         .json({ success: false, message: "Deposit not found" });
-
-    const updatedDeposit = await prisma.deposit.update({
-      where: { id },
-      data: { status, remarks },
-    });
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: deposit.userId },
       select: { name: true, email: true, plan: true },
     });
 
-    if (status === "proceed") {
+    const balanceUpdateOps = [];
+
+    // Only adjust balance if status is not still pending
+    if (status === "proceed" || status === "failed") {
       const balance = await prisma.balance.findUnique({
         where: { userId_plan: { userId: deposit.userId, plan: user.plan } },
       });
 
-      await prisma.balance.update({
-        where: { userId_plan: { userId: deposit.userId, plan: user.plan } },
-        data: { balance: balance.balance + deposit.amount },
-      });
+      const balanceUpdate = {
+        pendingDepositBalance: {
+          decrement: deposit.amount,
+        },
+      };
+
+      if (status === "proceed") {
+        balanceUpdate.balance = {
+          increment: deposit.amount,
+        };
+      }
+
+      balanceUpdateOps.push(
+        prisma.balance.update({
+          where: { userId_plan: { userId: deposit.userId, plan: user.plan } },
+          data: balanceUpdate,
+        })
+      );
     }
+
+    // Run all updates in a transaction
+    const [updatedDeposit] = await prisma.$transaction([
+      prisma.deposit.update({
+        where: { id },
+        data: { status, remarks },
+      }),
+      ...balanceUpdateOps,
+    ]);
 
     // Send Email Notification
     await sendMail({
@@ -409,7 +447,7 @@ export const getUserDeposits = async (req, res) => {
         id: true,
         amount: true,
         status: true,
-        DepositeId: true,
+        depositId: true,
         createdAt: true,
         updatedAt: true,
         remarks: true,

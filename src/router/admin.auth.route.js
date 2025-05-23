@@ -14,4 +14,6 @@ router.post('/login', loginAdmin);
 router.post('/verify-otp', verifyOtp);
 router.get('/profile', verifyAdminToken, getAdminProfile);
 
+
+
 export default router;
