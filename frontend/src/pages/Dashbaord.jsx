@@ -29,7 +29,7 @@ export default function UserDashboard() {
   try {
     const token = localStorage.getItem("token"); // Adjust the key if named differently
 
-    const response = await fetch("http://localhost:4000/api/v1/user/auth/profile", {
+    const response = await fetch("https://app.growp.in/api/v1/user/auth/profile", {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,

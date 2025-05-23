@@ -93,7 +93,7 @@ export default function TransactionForms() {
 
     setIsSubmitting(true)
     try {
-      const response = await fetch("http://localhost:4000/api/v1/transactions/deposit", {
+      const response = await fetch("https://app.growp.in/api/v1/transactions/deposit", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -138,7 +138,7 @@ export default function TransactionForms() {
 
     setIsSubmitting(true)
     try {
-      const response = await fetch("http://localhost:4000/api/v1/transactions/withdrawal", {
+      const response = await fetch("https://app.growp.in/api/v1/transactions/withdrawal", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

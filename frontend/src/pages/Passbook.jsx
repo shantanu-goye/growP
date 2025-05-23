@@ -24,14 +24,14 @@ export default function TransactionPassbook() {
 
         // Fetch deposits and withdrawals in parallel
         const [depositsResponse, withdrawalsResponse] = await Promise.all([
-          fetch('http://localhost:4000/api/v1/transactions/deposits', {
+          fetch('https://app.growp.in/api/v1/transactions/deposits', {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': token ? `Bearer ${token}` : '',
             },
           }),
-          fetch('http://localhost:4000/api/v1/transactions/withdrawals', {
+          fetch('https://app.growp.in/api/v1/transactions/withdrawals', {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
