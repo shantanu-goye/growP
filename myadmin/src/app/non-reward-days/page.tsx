@@ -47,7 +47,7 @@ export default function NonRewardDaysPage() {
 
   const fetchNonRewardDays = async () => {
     try {
-      const res = await fetch("http://localhost:4000/api/v1/rewardRatesettings/non-reward-days");
+      const res = await fetch("https://app.growp.in/api/v1/rewardRatesettings/non-reward-days");
       const data = await res.json();
       setNonRewardDays(data);
     } catch (error) {
@@ -55,41 +55,78 @@ export default function NonRewardDaysPage() {
     }
   };
 
-  const onSubmit = async (data: NonRewardDayFormData) => {
-    try {
-      const res = await fetch("http://localhost:4000/api/v1/rewardRatesettings/non-reward-days", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: format(data.date, "yyyy-MM-dd"),
-          reason: data.reason,
-        }),
-      });
-      if (res.ok) {
-        toast({ title: "Success", description: "Non-reward day added." });
-        reset();
-        fetchNonRewardDays();
-      } else {
-        toast({ title: "Error", description: "Could not add day." });
-      }
-    } catch (err) {
-      toast({ title: "Error", description: "Network error." });
-    }
-  };
+const onSubmit = async (data: NonRewardDayFormData) => {
+  const token = localStorage.getItem("token")
+  console.log("Submitting non-reward day:", token);
+  if (!token) {
+    return toast({
+      title: "Unauthorized",
+      description: "Please log in again.",
+      variant: "destructive",
+    })
+  }
 
-  const removeNonRewardDay = async (id: string) => {
-    try {
-      const res = await fetch(`http://localhost:4000/api/v1/rewardRatesettings/non-reward-days/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        toast({ title: "Success", description: "Non-reward day removed." });
-        fetchNonRewardDays();
-      } else {
-        toast({ title: "Error", description: "Could not delete day." });
-      }
-    } catch (err) {
-      toast({ title: "Error", description: "Network error." });
+  try {
+    const res = await fetch("https:// app.growp.in/api/v1/rewardRatesettings/non-reward-days", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `${token}`,
+      },
+      body: JSON.stringify({
+        date: format(data.date, "yyyy-MM-dd"), // Ensure format like "2025-06-01"
+        reason: data.reason,
+      }),
+    })
+
+    if (res.ok) {
+      toast({
+        title: "Success",
+        description: "Non-reward day added successfully.",
+      })
+      reset() // if using react-hook-form
+      fetchNonRewardDays?.() // optional: refresh the data
+    } else {
+      const err = await res.json()
+      toast({
+        title: "Error",
+        description: err.message || "Failed to add non-reward day.",
+        variant: "destructive",
+      })
     }
-  };
+  } catch (err) {
+    console.error(err)
+    toast({
+      title: "Error",
+      description: "Network error. Please try again later.",
+      variant: "destructive",
+    })
+  }
+}
+
+const removeNonRewardDay = async (id: string) => {
+  const token = localStorage.getItem("token");
+  if (!token) return toast({ title: "Unauthorized", description: "Please login again." });
+
+  try {
+    const res = await fetch(`https://app.growp.in/api/v1/rewardRatesettings/non-reward-days/${id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (res.ok) {
+      toast({ title: "Success", description: "Non-reward day removed." });
+      fetchNonRewardDays();
+    } else {
+      const err = await res.json();
+      toast({ title: "Error", description: err.message || "Could not delete day." });
+    }
+  } catch (err) {
+    toast({ title: "Error", description: "Network error." });
+  }
+};
 
   return (
     <AppLayout>

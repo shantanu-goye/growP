@@ -21,9 +21,18 @@ import { useToast } from "@/hooks/use-toast";
 import { PLAN_TYPES } from "@/lib/constants";
 
 const rewardRatesSchema = z.object({
-  seed: z.coerce.number().min(0, "Rate must be non-negative.").max(100, "Rate must be at most 100."),
-  plant: z.coerce.number().min(0, "Rate must be non-negative.").max(100, "Rate must be at most 100."),
-  tree: z.coerce.number().min(0, "Rate must be non-negative.").max(100, "Rate must be at most 100."),
+  seed: z.coerce
+    .number()
+    .min(0, "Rate must be non-negative.")
+    .max(100, "Rate must be at most 100."),
+  plant: z.coerce
+    .number()
+    .min(0, "Rate must be non-negative.")
+    .max(100, "Rate must be at most 100."),
+  tree: z.coerce
+    .number()
+    .min(0, "Rate must be non-negative.")
+    .max(100, "Rate must be at most 100."),
 });
 
 type RewardRatesFormData = z.infer<typeof rewardRatesSchema>;
@@ -54,11 +63,12 @@ export default function RewardRatesPage() {
     async function fetchRates() {
       try {
         setLoading(true);
-        const res = await fetch("http://localhost:4000/api/v1/rewardRatesettings/reward-rates");
+        const res = await fetch(
+          "https://app.growp.in/api/v1/rewardRatesettings/reward-rates"
+        );
         if (!res.ok) throw new Error("Failed to fetch reward rates");
         const data = await res.json();
 
-        // Format the data if backend doesn't return in key format (optional)
         const mapped: RewardRatesFormData = {
           seed: data.data.find((d: any) => d.plan === "seed")?.rate ?? 0,
           plant: data.data.find((d: any) => d.plan === "plant")?.rate ?? 0,
@@ -78,30 +88,57 @@ export default function RewardRatesPage() {
   }, [reset, toast]);
 
   const onSubmit = async (data: RewardRatesFormData) => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      toast({ title: "Unauthorized", description: "Please login again." });
+      return;
+    }
+
     try {
-      for (const planType of PLAN_TYPES as (keyof RewardRatesFormData)[]) {
-        const rate = data[planType];
-        const res = await fetch(`http://localhost:4000/api/v1/rewardRatesettings/reward-rates/${planType}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rate }),
-        });
-        if (!res.ok) throw new Error(`Failed to update ${planType} rate`);
+      for (const plan of PLAN_TYPES as (keyof RewardRatesFormData)[]) {
+        const rate = Number(data[plan]);
+
+        const res = await fetch(
+          `https://app.growp.in/api/v1/rewardRatesettings/reward-rates/${plan.toLowerCase()}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ rate }),
+          }
+        );
+
+        const result = await res.json();
+
+        if (!res.ok) {
+          throw new Error(result.message || `Failed to update ${plan} rate`);
+        }
       }
 
       setCurrentRates(data);
       reset(data);
-      toast({ title: "Success", description: "Reward rates updated successfully." });
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to update reward rates." });
+      toast({
+        title: "Success",
+        description: "Reward rates updated successfully.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update reward rates.",
+      });
     }
   };
 
   if (loading) {
     return (
       <AppLayout>
-        <PageHeader title="Reward Rate Configuration" description="Loading..." />
-        <p className="text-center mt-10 text-muted-foreground">Loading reward rates...</p>
+        <PageHeader title="Reward Rate Configuration" />
+        <div className="flex items-center justify-center h-screen">
+          <p>Loading...</p>
+        </div>
       </AppLayout>
     );
   }
@@ -116,16 +153,25 @@ export default function RewardRatesPage() {
         <CardHeader>
           <CardTitle>Set Reward Percentages</CardTitle>
           <CardDescription>
-            Enter the reward rate percentages for each plan type. These rates are applied globally.
+            Enter the reward rate percentages for each plan type. These rates are
+            applied globally.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             {(PLAN_TYPES as (keyof RewardRatesFormData)[]).map((planType) => (
               <div key={planType} className="space-y-2">
-                <Label htmlFor={planType} className="text-lg font-medium capitalize">
-                  {planType} Plan Rate (%)
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label
+                    htmlFor={planType}
+                    className="text-lg font-medium capitalize"
+                  >
+                    {planType} Plan Rate (%)
+                  </Label>
+                  <span className="text-sm text-muted-foreground">
+                    Current: <strong>{currentRates[planType]}%</strong>
+                  </span>
+                </div>
                 <div className="relative">
                   <Controller
                     name={planType}
@@ -144,7 +190,9 @@ export default function RewardRatesPage() {
                   <Percent className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 </div>
                 {errors[planType] && (
-                  <p className="text-sm text-destructive mt-1">{errors[planType]?.message}</p>
+                  <p className="text-sm text-destructive mt-1">
+                    {errors[planType]?.message}
+                  </p>
                 )}
               </div>
             ))}

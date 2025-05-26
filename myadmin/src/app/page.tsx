@@ -1,12 +1,20 @@
 "use client"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { useToast } from "@/components/ui/use-toast"
-
 import * as React from "react"
-import { AppLayout } from "@/components/app-layout"
-import { PageHeader } from "@/components/common/page-header"
+import { useRouter } from "next/navigation"
+import { format, parseISO } from "date-fns"
+import { ArrowUpDown, PlusCircle, Search } from "lucide-react"
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import {
   Table,
   TableHeader,
@@ -15,10 +23,8 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { ArrowUpDown, PlusCircle, Search } from "lucide-react"
-import { format, parseISO } from "date-fns"
+import { AppLayout } from "@/components/app-layout"
+import { PageHeader } from "@/components/common/page-header"
 import type { User } from "@/types"
 
 type SortKey = keyof User | ""
@@ -29,12 +35,36 @@ export default function UserDataGridPage() {
   const [searchTerm, setSearchTerm] = React.useState("")
   const [sortKey, setSortKey] = React.useState<SortKey>("")
   const [sortOrder, setSortOrder] = React.useState<SortOrder>("asc")
+  const [isLoading, setIsLoading] = React.useState(true)
+  const [isDialogOpen, setIsDialogOpen] = React.useState(false)
 
-  // Fetch data from API
+  const [formData, setFormData] = React.useState({
+    name: "",
+    email: "",
+    password: "",
+    accountNumber: "",
+    ifscCode: "",
+    panNumber: "",
+    aadhaarNumber: "",
+    phoneNumber: "",
+    dob: "",
+  })
+
+  const router = useRouter()
+
+  React.useEffect(() => {
+    const token = localStorage.getItem("token")
+    if (!token) {
+      router.replace("/login")
+    } else {
+      setIsLoading(false)
+    }
+  }, [router])
+
   React.useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await fetch("http://localhost:4000/api/v1/user/auth/users", {
+        const res = await fetch("https://app.growp.in/api/v1/user/auth/users", {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("authToken")}`,
           },
@@ -46,8 +76,10 @@ export default function UserDataGridPage() {
       }
     }
 
-    fetchUsers()
-  }, [])
+    if (!isLoading) {
+      fetchUsers()
+    }
+  }, [isLoading])
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -92,16 +124,110 @@ export default function UserDataGridPage() {
     return filtered
   }, [users, searchTerm, sortKey, sortOrder])
 
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      const res = await fetch("https://app.growp.in/api/v1/user/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+        },
+        body: JSON.stringify(formData),
+      })
+
+      const result = await res.json()
+
+      if (!res.ok) {
+        alert(result.message || "Registration failed")
+        return
+      }
+
+      alert("User registered successfully!")
+      setIsDialogOpen(false)
+      setFormData({
+        name: "",
+        email: "",
+        password: "",
+        accountNumber: "",
+        ifscCode: "",
+        panNumber: "",
+        aadhaarNumber: "",
+        phoneNumber: "",
+        dob: "",
+      })
+
+      // Refresh users
+      const refreshed = await fetch("https://app.growp.in/api/v1/user/auth/users", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+        },
+      })
+      const data = await refreshed.json()
+      setUsers(data.users || [])
+    } catch (err) {
+      console.error(err)
+      alert("Something went wrong.")
+    }
+  }
+
   const getSortIcon = (key: SortKey) => (
     <ArrowUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50 group-hover:opacity-100" />
   )
 
+  if (isLoading) return <div>Loading...</div>
+
   return (
     <AppLayout>
       <PageHeader title="User Data" description="Manage and view user details.">
-        <Button>
-          <PlusCircle className="mr-2 h-4 w-4" /> Add User
-        </Button>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <PlusCircle className="mr-2 h-4 w-4" /> Add User
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Register New User</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleFormSubmit} className="grid gap-4 sm:grid-cols-2">
+  {[
+    ["name", "Name"],
+    ["email", "Email"],
+    ["password", "Password", "password"],
+    ["accountNumber", "Account Number"],
+    ["ifscCode", "IFSC Code"],
+    ["panNumber", "PAN Number"],
+    ["aadhaarNumber", "Aadhaar Number"],
+    ["phoneNumber", "Phone Number"],
+    ["dob", "Date of Birth", "date"],
+  ].map(([key, label, type = "text"]) => (
+    <div className="grid gap-1" key={key} style={{ gridColumn: key === "dob" ? "span 2 / span 2" : undefined }}>
+      <Label htmlFor={key}>{label}</Label>
+      <Input
+        type={type}
+        name={key}
+        value={(formData as any)[key]}
+        onChange={handleFormChange}
+        required
+      />
+    </div>
+  ))}
+
+  <div className="sm:col-span-2">
+    <Button type="submit" className="w-full">
+      Register
+    </Button>
+  </div>
+</form>
+
+          </DialogContent>
+        </Dialog>
       </PageHeader>
 
       <div className="mb-4">
@@ -110,7 +236,7 @@ export default function UserDataGridPage() {
           <Input
             type="search"
             placeholder="Search users..."
-            className="pl-8 sm:w-[300px] md:w-[300px] lg:w-[300px]"
+            className="pl-8 sm:w-[300px]"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -152,10 +278,7 @@ export default function UserDataGridPage() {
                     {user.plan}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-left">
-  ${user.balance?.toFixed(2) ?? "0.00"}
-</TableCell>
-
+                <TableCell>${user.balance?.toFixed(2) ?? "0.00"}</TableCell>
                 <TableCell>{format(parseISO(user.createdAt), "MMM dd, yyyy")}</TableCell>
               </TableRow>
             ))}

@@ -45,8 +45,8 @@ export default function TransactionLogsPage() {
     const fetchTransactions = async () => {
   try {
     const [depositRes, withdrawalRes] = await Promise.all([
-      fetch("http://localhost:4000/api/v1/transactions/admin/deposits"),
-      fetch("http://localhost:4000/api/v1/transactions/admin/withdrawals"),
+      fetch("https://app.growp.in/api/v1/transactions/admin/deposits"),
+      fetch("https://app.growp.in/api/v1/transactions/admin/withdrawals"),
     ]);
 
     if (!depositRes.ok || !withdrawalRes.ok) {

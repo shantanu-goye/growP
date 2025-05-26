@@ -13,7 +13,7 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/transactions', label: 'Transaction Logs', icon: ListChecks },
   { path: '/non-reward-days', label: 'Non-Reward Days', icon: CalendarOff },
   { path: '/reward-rates', label: 'Reward Rates', icon: Settings },
-  { path: '/audit-trail', label: 'Audit Trail', icon: History },
+  // { path: '/audit-trail', label: 'Audit Trail', icon: History },
 ];
 
 export const APP_NAME = "Admin Panel";
