@@ -120,10 +120,10 @@ export default function TransactionLogsPage() {
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px] bg-white">
             <SelectValue placeholder="Filter by Status" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="bg-white">
             <SelectItem value="all">All Statuses</SelectItem>
             <SelectItem value="Pending">Pending</SelectItem>
             <SelectItem value="Completed">Completed</SelectItem>
@@ -134,7 +134,7 @@ export default function TransactionLogsPage() {
           <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="Filter by Type" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="bg-white">
             <SelectItem value="all">All Types</SelectItem>
             <SelectItem value="Deposit">Deposit</SelectItem>
             <SelectItem value="Withdrawal">Withdrawal</SelectItem>
