@@ -23,7 +23,9 @@ export const updateRewardRate = async (req, res) => {
     let { rate } = req.body;
     const adminId = "test";
     rate = Number(rate);
-    if (!rate || isNaN(rate)) {
+
+    // ✅ Accept 0 as valid
+    if (rate === undefined || rate === null || isNaN(rate)) {
       return res.status(400).json({
         success: false,
         message: "Valid rate is required",
@@ -54,7 +56,7 @@ export const updateRewardRate = async (req, res) => {
       data: updatedRate,
     });
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.status(500).json({
       success: false,
       message: "Failed to update reward rate",
@@ -103,13 +105,21 @@ export const createNonRewardDay = async (req, res) => {
       });
     }
 
+    const dateObj = new Date(date);
+    if (isNaN(dateObj.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date format",
+      });
+    }
+
     const nonRewardDay = await prisma.nonRewardDay.create({
-      data: { date: new Date(date), reason, createdBy },
+      data: { date: dateObj, reason, createdBy },
     });
 
     // Log the action
     await logAction(createdBy, "NON_REWARD_DAY_CREATE", {
-      date: new Date(date),
+      date: dateObj,
       reason,
       nonRewardDayId: nonRewardDay.id,
     });
