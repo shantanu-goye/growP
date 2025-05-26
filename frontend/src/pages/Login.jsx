@@ -28,7 +28,7 @@ const handleSubmit = async () => {
     urlencoded.append("password", password);
     urlencoded.append("type", "full");
 
-    const response = await fetch("http://localhost:4000/api/v1/user/auth/login", {
+    const response = await fetch("https://app.growp.in/api/v1/user/auth/login", {
       method: "POST",
       headers: myHeaders,
       body: urlencoded,
