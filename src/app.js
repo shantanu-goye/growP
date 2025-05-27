@@ -59,6 +59,10 @@ import adminRoutes from "./router/admin.auth.route.js";
 import tranasctionRoute from "./router/transaction.route.js";
 import rewardSettingRoute from "./router/rewardSettings.route.js";
 import notifcationRouter from "./router/notification.route.js"
+import { startRewardCronJob,creditDailyRewards} from "./lib/rewardJob.js";
+
+ startRewardCronJob(); // Start the reward cron job
+creditDailyRewards(); // Uncomment to run immediately for testing
 app.use("/api/v1/user", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/transactions", tranasctionRoute);

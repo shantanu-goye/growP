@@ -175,8 +175,12 @@ export const register = async (req, res) => {
     await sendMail({
       to: newUser.email,
       subject: "Welcome! Verify Your Email",
-      html: `<p>Hello ${newUser.name},</p><p>Thank you for registering. Please <a href="${process.env.BASE_URL}/verify-email/${newUser.id}">verify your email</a>.</p>`,
+      html: `<p>Hello ${newUser.name},</p>
+            <p>Thank you for registering. Please 
+            <a href="https://app.growp.in/api/v1/user/auth/verify-email/${newUser.id}">
+            verify your email</a>.</p>`,
     });
+
 
     await createAuditLog("USER_REGISTRATION_SUCCESS", newUser.id, {
       customerId: newUser.customerId,
