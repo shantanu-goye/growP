@@ -5,7 +5,7 @@ import { AppLayout } from "@/components/app-layout";
 import { PageHeader } from "@/components/common/page-header";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { mockAuditLogs } from "@/data/mock";
-import type { AuditLog } from "@/types";
+// import type { AuditLog } from "@/types";
 import { format, parseISO } from 'date-fns';
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";

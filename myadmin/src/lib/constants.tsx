@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { Users, BarChart3, ListChecks, CalendarOff, Settings, History, LayoutDashboard } from 'lucide-react';
+import { Users, BarChart3, ListChecks, CalendarOff, Settings, } from 'lucide-react';
 
 export interface NavItem {
   path: string;

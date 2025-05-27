@@ -37,9 +37,9 @@ export interface RewardRates {
 }
 
 export interface AuditLog {
-  id:string;
+  id: string;
   adminUserName: string;
-  action: string; 
+  action: string;
   timestamp: string; // ISO string format for date
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>; // safer than `any`
 }
