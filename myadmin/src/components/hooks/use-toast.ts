@@ -17,7 +17,7 @@ type ToasterToast = ToastProps & {
   description?: React.ReactNode;
   action?: ToastActionElement;
 };
-
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
   UPDATE_TOAST: "UPDATE_TOAST",
@@ -26,6 +26,7 @@ export const actionTypes = {
 } as const;
 
 export type ActionType = typeof actionTypes[keyof typeof actionTypes];
+
 
 type Action =
   | {
