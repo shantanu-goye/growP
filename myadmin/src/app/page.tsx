@@ -177,7 +177,15 @@ export default function UserDataGridPage() {
   }
 
   const getSortIcon = (key: SortKey) => (
-    <ArrowUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50 group-hover:opacity-100" />
+    sortKey === key ? (
+      sortOrder === "asc" ? (
+        <ArrowUpDown className="ml-2 h-4 w-4 shrink-0 opacity-100 group-hover:opacity-100" />
+      ) : (
+        <ArrowUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50 group-hover:opacity-100" />
+      )
+    ) : (
+      <ArrowUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50 group-hover:opacity-100" />
+    )
   )
 
   if (isLoading) return <div>Loading...</div>
@@ -212,7 +220,7 @@ export default function UserDataGridPage() {
       <Input
         type={type}
         name={key}
-        value={(formData as any)[key]}
+        value={(formData as Record<string, string>)[key]}
         onChange={handleFormChange}
         required
       />

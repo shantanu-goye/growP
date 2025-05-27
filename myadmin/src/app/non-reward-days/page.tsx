@@ -41,9 +41,9 @@ export default function NonRewardDaysPage() {
     defaultValues: { date: undefined, reason: "" },
   });
 
-  React.useEffect(() => {
-    fetchNonRewardDays();
-  }, []);
+  // React.useEffect(() => {
+  //   fetchNonRewardDays();
+  // }, []);
 
   const fetchNonRewardDays = async () => {
     try {
@@ -51,7 +51,7 @@ export default function NonRewardDaysPage() {
       const data = await res.json();
       setNonRewardDays(data);
     } catch (error) {
-      toast({ title: "Error", description: "Failed to load non-reward days." });
+      toast({ title: "Error", description: "Failed to load non-reward days.:"+error });
     }
   };
 
@@ -124,7 +124,7 @@ const removeNonRewardDay = async (id: string) => {
       toast({ title: "Error", description: err.message || "Could not delete day." });
     }
   } catch (err) {
-    toast({ title: "Error", description: "Network error." });
+    toast({ title: "Error", description: "Network error.:"+err });
   }
 };
 

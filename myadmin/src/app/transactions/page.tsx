@@ -59,7 +59,17 @@ export default function TransactionLogsPage() {
     const deposits = depositJson.deposits;
     const withdrawals = withdrawalJson.withdrawals;
 
-    const depositData: Transaction[] = deposits.map((d: any) => ({
+    interface RawTransaction {
+      id: string;
+      amount: number;
+      status: 'Pending' | 'Completed' | 'Failed';
+      createdAt: string;
+      user: {
+        name: string;
+      };
+    }
+
+    const depositData: Transaction[] = deposits.map((d: RawTransaction) => ({
       id: d.id,
       userName: d.user.name,
       type: "Deposit",
@@ -68,7 +78,7 @@ export default function TransactionLogsPage() {
       timestamp: d.createdAt,
     }));
 
-    const withdrawalData: Transaction[] = withdrawals.map((w: any) => ({
+    const withdrawalData: Transaction[] = withdrawals.map((w: RawTransaction) => ({
       id: w.id,
       userName: w.user.name,
       type: "Withdrawal",
@@ -76,6 +86,7 @@ export default function TransactionLogsPage() {
       status: w.status,
       timestamp: w.createdAt,
     }));
+
 
     const allTransactions = [...depositData, ...withdrawalData].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()

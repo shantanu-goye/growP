@@ -69,16 +69,22 @@ export default function RewardRatesPage() {
         if (!res.ok) throw new Error("Failed to fetch reward rates");
         const data = await res.json();
 
-        const mapped: RewardRatesFormData = {
-          seed: data.data.find((d: any) => d.plan === "seed")?.rate ?? 0,
-          plant: data.data.find((d: any) => d.plan === "plant")?.rate ?? 0,
-          tree: data.data.find((d: any) => d.plan === "tree")?.rate ?? 0,
+        interface RewardRateItem {
+          plan: 'seed' | 'plant' | 'tree';
+          rate: number;
+        }
+
+                const mapped: RewardRatesFormData = {
+          seed: (data.data as RewardRateItem[]).find((d) => d.plan === "seed")?.rate ?? 0,
+          plant: (data.data as RewardRateItem[]).find((d) => d.plan === "plant")?.rate ?? 0,
+          tree: (data.data as RewardRateItem[]).find((d) => d.plan === "tree")?.rate ?? 0,
         };
+
 
         setCurrentRates(mapped);
         reset(mapped);
       } catch (error) {
-        toast({ title: "Error", description: "Could not load reward rates." });
+        toast({ title: "Error", description: "Could not load reward rates.:"+error });
       } finally {
         setLoading(false);
       }
@@ -124,10 +130,12 @@ export default function RewardRatesPage() {
         title: "Success",
         description: "Reward rates updated successfully.",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Failed to update reward rates.";
       toast({
         title: "Error",
-        description: error.message || "Failed to update reward rates.",
+        description: message,
       });
     }
   };
