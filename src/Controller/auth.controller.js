@@ -336,7 +336,14 @@ export const getUserById = async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { id },
-      include: { balances: true },
+      include: { balances: true ,
+        deposits:true,
+        withdrawals:true,
+        transactions: {
+          orderBy: { createdAt: "desc" },
+          take: 5, // recent transactions
+        },
+      },
     });
 
     if (!user) {
