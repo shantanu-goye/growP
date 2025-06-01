@@ -92,12 +92,12 @@ const handleSubmit = async () => {
           <div className="space-y-6">
             <div className="space-y-2">
               <label htmlFor="email" className="block text-sm font-medium text-gray-900">
-                Email or Phone
+                Email
               </label>
               <input
                 id="email"
                 type="email"
-                placeholder="Enter your email or phone"
+                placeholder="Enter your email "
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
