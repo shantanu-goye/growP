@@ -494,7 +494,7 @@ export const verifyEmail = async (req, res) => {
     // Send success HTML page
     return res
       .status(200)
-      .sendFile(path.join(__dirname, "public", "email-verified.html"));
+      .sendFile(path.join(__dirname, "../../public", "email-verified.html"));
   } catch (error) {
     console.error("Email verification error:", error);
 
@@ -508,7 +508,7 @@ export const verifyEmail = async (req, res) => {
     return res
       .status(500)
       .sendFile(
-        path.join(__dirname, "public", "email-verification-failed.html")
+        path.join(__dirname, "../../public", "email-verification-failed.html")
       );
   }
 };
