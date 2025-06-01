@@ -559,7 +559,7 @@ export const getProfileOfUser = async (req, res) => {
 // In your auth.controller.js
 export const resendVerificationEmail = async (req, res) => {
   try {
-    const { email } = req.query;
+    const { email } = req.params;
 
     if (!email) {
       return res.status(400).json({

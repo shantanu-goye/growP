@@ -23,7 +23,7 @@ router.get("/auth/users", getAllUsers);
 router.get("/auth/profile", authenticateToken, getProfileOfUser);
 router.get("/auth/users/:id", getUserById);
 router.get("/auth/verify-email/:token", verifyEmail);
-router.post("/auth/resend-verification", resendVerificationEmail); // Add thi
+router.post("/auth/resend-verification/:email", resendVerificationEmail); // Add thi
 router.post("/auth/password-reset/otp", sendPasswordResetOTP);
 router.post("/auth/password-reset/verify", verifyPasswordResetOTP);
 router.post("/auth/password-reset/reset", resetPasswordWithOTP);
