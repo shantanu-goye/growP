@@ -1,17 +1,20 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { CreditCard, ArrowDownCircle, ArrowUpCircle, User, DollarSign, Clock } from "lucide-react"
+import { CreditCard, ArrowDownCircle, ArrowUpCircle, User, DollarSign, Clock, X, ArrowRight } from "lucide-react"
 
-export default function UserDashboard() {
+export default function UserDashboard({ setActiveTab }) { // Destructure the prop properly
   // For responsive design detection
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   // User data state
   const [userData, setUserData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  // State for active tab
-  const [activeTab, setActiveTab] = useState("deposits")
+  // Remove local activeTab state since it's controlled by parent
+  // const [activeTab, setActiveTab] = useState("deposits") // Remove this line
+  const [activeTab, setLocalActiveTab] = useState("deposits") // Keep local state for internal tab switching
+  // State for first login modal
+  const [showFirstLoginModal, setShowFirstLoginModal] = useState(false)
 
   // Effect for detecting screen size changes
   useEffect(() => {
@@ -25,37 +28,64 @@ export default function UserDashboard() {
 
   // Fetch user data
   useEffect(() => {
-   const fetchUserData = async () => {
-  try {
-    const token = localStorage.getItem("token"); // Adjust the key if named differently
+    const fetchUserData = async () => {
+      try {
+        const token = localStorage.getItem("token"); // Adjust the key if named differently
 
-    const response = await fetch("https://app.growp.in/api/v1/user/auth/profile", {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    });
+        const response = await fetch("http://localhost:4000/api/v1/user/auth/profile", {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-    if (!response.ok) {
-      throw new Error("Failed to fetch user data");
-    }
+        if (!response.ok) {
+          throw new Error("Failed to fetch user data");
+        }
 
-    const responseData = await response.json();
+        const responseData = await response.json();
 
-    if (responseData.success && responseData.profile) {
-      setUserData(responseData.profile);
-    } else {
-      throw new Error("Invalid data structure received from API");
-    }
-  } catch (err) {
-    setError(err.message);
-  } finally {
-    setLoading(false);
-  }
-};
+        if (responseData.success && responseData.profile) {
+          setUserData(responseData.profile);
+          // Show first login modal if it's user's first login
+          console.log(responseData)
+          if (responseData.profile.isFirstLogin=== true) {
+            setShowFirstLoginModal(true);
+          }
+        } else {
+          throw new Error("Invalid data structure received from API");
+        }
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
 
     fetchUserData()
   }, [])
+
+  // Handle first login modal actions
+  const handleGoToDeposit = () => {
+    setShowFirstLoginModal(false)
+    // Use the parent's setActiveTab function to change the main navigation
+    if (setActiveTab) {
+      setActiveTab("transaction") // This will change the parent's active tab
+    }
+    // Also set local tab to transactions
+    setLocalActiveTab("transactions")
+    // Scroll to transaction section
+    setTimeout(() => {
+      const transactionSection = document.querySelector('[data-section="transactions"]')
+      if (transactionSection) {
+        transactionSection.scrollIntoView({ behavior: 'smooth' })
+      }
+    }, 100) // Small delay to ensure DOM is updated
+  }
+
+  const handleDismissModal = () => {
+    setShowFirstLoginModal(false)
+  }
 
   // Format date function
   const formatDate = (dateString) => {
@@ -108,6 +138,52 @@ export default function UserDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
+      {/* First Login Modal */}
+      {showFirstLoginModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative animate-in slide-in-from-bottom-4 duration-300">
+            <button
+              onClick={handleDismissModal}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X size={20} />
+            </button>
+            
+            <div className="text-center">
+              
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Welcome to GrowP!</h2>
+              <p className="text-gray-600 mb-6">
+                To get started with trading and investing, you'll need to add funds to your account.
+              </p>
+              
+              <div className="space-y-3">
+                <button
+                  onClick={handleGoToDeposit}
+                  className="w-full bg-blue-600 text-white py-3 px-6 rounded-xl font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  Make Your First Deposit
+                  <ArrowRight size={18} />
+                </button>
+                
+                <button
+                  onClick={handleDismissModal}
+                  className="w-full text-gray-500 py-2 px-6 rounded-xl font-medium hover:text-gray-700 transition-colors"
+                >
+                  I'll do this later
+                </button>
+              </div>
+              
+              <div className="mt-4 p-3 bg-green-50 rounded-lg">
+                <p className="text-sm text-green-700">
+                  💡 <strong>Tip:</strong> Start with an amount according to your plan. If you're unsure, ask our representative.
+
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-screen mx-auto px-4 py-8">
         {/* Main Dashboard Container */}
         <div className="space-y-6">
@@ -169,7 +245,7 @@ export default function UserDashboard() {
 
             {/* Pending Deposit - Only show if not zero */}
             {balanceData.pendingDepositBalance > 0 && (
-              <div className="bg- rounded-xl shadow-md hover:shadow-lg transition-shadow p-4 border-l-4 border-blue-400">
+              <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow p-4 border-l-4 border-blue-400">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Pending Deposit</p>
                   <div className="bg-blue-100 p-2 rounded-lg">
@@ -250,7 +326,7 @@ export default function UserDashboard() {
           </div>
 
           {/* Transaction History */}
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+          <div className="bg-white rounded-xl shadow-md overflow-hidden" data-section="transactions">
             <div className="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
               <h3 className="text-xl font-bold text-gray-800">Transaction History</h3>
             </div>
@@ -259,7 +335,7 @@ export default function UserDashboard() {
             <div className="flex border-b border-gray-100">
               <button
                 className={`flex-1 py-4 text-sm font-medium relative ${activeTab === "deposits" ? "text-blue-600" : "text-gray-500 hover:text-gray-800"}`}
-                onClick={() => setActiveTab("deposits")}
+                onClick={() => setLocalActiveTab("deposits")}
               >
                 Deposits
                 {activeTab === "deposits" && (
@@ -268,7 +344,7 @@ export default function UserDashboard() {
               </button>
               <button
                 className={`flex-1 py-4 text-sm font-medium relative ${activeTab === "withdrawals" ? "text-blue-600" : "text-gray-500 hover:text-gray-800"}`}
-                onClick={() => setActiveTab("withdrawals")}
+                onClick={() => setLocalActiveTab("withdrawals")}
               >
                 Withdrawals
                 {activeTab === "withdrawals" && (
@@ -277,7 +353,7 @@ export default function UserDashboard() {
               </button>
               <button
                 className={`flex-1 py-4 text-sm font-medium relative ${activeTab === "transactions" ? "text-blue-600" : "text-gray-500 hover:text-gray-800"}`}
-                onClick={() => setActiveTab("transactions")}
+                onClick={() => setLocalActiveTab("transactions")}
               >
                 All Transactions
                 {activeTab === "transactions" && (
@@ -459,12 +535,12 @@ export default function UserDashboard() {
                             {transaction.transactionId || transaction.id}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-500">{formatDate(transaction.createdAt)}</td>
-                  <td
-  className={`px-6 py-4 text-sm text-right font-semibold ${
-    transaction.type === "deposit" ? "text-green-600" : "text-red-600"
-  }`}>
-  {transaction.type === "deposit" ? "+" : "-"}₹{transaction.amount.toLocaleString()}
-</td>
+                          <td
+                            className={`px-6 py-4 text-sm text-right font-semibold ${
+                              transaction.type === "deposit" ? "text-green-600" : "text-red-600"
+                            }`}>
+                            {transaction.type === "deposit" ? "+" : "-"}₹{transaction.amount.toLocaleString()}
+                          </td>
                           <td className="px-6 py-4">
                             <span
                               className={`px-3 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${

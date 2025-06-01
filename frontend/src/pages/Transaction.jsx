@@ -212,10 +212,10 @@ export default function TransactionForms() {
               </a>
     
                 <p className="text-gray-500 text-center">
-                  Deposit instructions or QR code will appear here
+                Make a UPI payment using the following QR or UPI address: <span className="text-black">Q051568312@yb</span>
                 </p>
                 <p className="text-sm text-gray-400 mt-2">
-                  Upload your payment screenshot or scan QR code
+                 
                 </p>
               </div>
             </div>

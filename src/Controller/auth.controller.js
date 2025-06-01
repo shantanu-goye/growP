@@ -181,7 +181,6 @@ export const register = async (req, res) => {
             verify your email</a>.</p>`,
     });
 
-
     await createAuditLog("USER_REGISTRATION_SUCCESS", newUser.id, {
       customerId: newUser.customerId,
       email: newUser.email,
@@ -336,12 +335,19 @@ export const getUserById = async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { id },
-      include: { balances: true ,
-        deposits:true,
-        withdrawals:true,
-        transactions: {
-          orderBy: { createdAt: "desc" },
-          take: 5, // recent transactions
+      include: {
+        balances: true,
+        deposits: {
+          take: 5,
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+        withdrawals: {
+          take: 5,
+          orderBy: {
+            createdAt: "desc",
+          },
         },
       },
     });
@@ -458,6 +464,12 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 export const verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
@@ -479,10 +491,10 @@ export const verifyEmail = async (req, res) => {
       ip: req.ip || req.connection.remoteAddress,
     });
 
-    return res.status(200).json({
-      success: true,
-      message: "Email verified successfully",
-    });
+    // Send success HTML page
+    return res
+      .status(200)
+      .sendFile(path.join(__dirname, "public", "email-verified.html"));
   } catch (error) {
     console.error("Email verification error:", error);
 
@@ -492,11 +504,12 @@ export const verifyEmail = async (req, res) => {
       ip: req.ip || req.connection.remoteAddress,
     });
 
-    return res.status(500).json({
-      success: false,
-      message: "Email verification failed",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
-    });
+    // Send failure HTML page
+    return res
+      .status(500)
+      .sendFile(
+        path.join(__dirname, "public", "email-verification-failed.html")
+      );
   }
 };
 
@@ -538,11 +551,15 @@ export const getProfileOfUser = async (req, res) => {
         email: user.email,
         phone: user.phone,
         plan: user.plan,
+
+        isFirstLogin: user.firstLogin,
         createdAt: user.createdAt,
         balances: user.balances,
         recentDeposits: user.deposits,
         recentWithdrawals: user.withdrawals,
         recentTransactions: user.transactions ?? [],
+        isFirstLogin: user.firstLogin,
+        isEmailVerified: user.isEmailVerified,
       },
     });
   } catch (error) {
@@ -564,26 +581,26 @@ export const resendVerificationEmail = async (req, res) => {
     if (!email) {
       return res.status(400).json({
         success: false,
-        message: "Email parameter is required"
+        message: "Email parameter is required",
       });
     }
 
     // Find user by email
     const user = await prisma.user.findUnique({
-      where: { email }
+      where: { email },
     });
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User with this email not found"
+        message: "User with this email not found",
       });
     }
 
     if (user.isEmailVerified) {
       return res.status(400).json({
         success: false,
-        message: "Email is already verified"
+        message: "Email is already verified",
       });
     }
 
@@ -594,20 +611,18 @@ export const resendVerificationEmail = async (req, res) => {
       html: `<p>Please verify your email by clicking this link:</p>
             <a href="${process.env.BASE_URL}/api/v1/user/auth/verify-email/${user.id}">
               Verify Email
-            </a>`
+            </a>`,
     });
 
     return res.status(200).json({
       success: true,
-      message: "Verification email resent successfully"
+      message: "Verification email resent successfully",
     });
-
   } catch (error) {
     console.error("Resend verification error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error"
+      message: "Internal server error",
     });
   }
 };
-
