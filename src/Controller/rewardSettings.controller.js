@@ -94,9 +94,11 @@ export const getNonRewardDays = async (req, res) => {
 };
 
 export const createNonRewardDay = async (req, res) => {
+  // console.log("req.user:", req.user.id);
+
   try {
     const { date, reason } = req.body;
-    const createdBy = req.user.id; // Assuming admin user is authenticated
+    const createdBy ="super admin"; // Assuming admin user is authenticated
 
     if (!date) {
       return res.status(400).json({

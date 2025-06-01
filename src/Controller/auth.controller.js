@@ -548,3 +548,59 @@ export const getProfileOfUser = async (req, res) => {
     });
   }
 };
+
+// In your auth.controller.js
+export const resendVerificationEmail = async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email parameter is required"
+      });
+    }
+
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User with this email not found"
+      });
+    }
+
+    if (user.isEmailVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is already verified"
+      });
+    }
+
+    // Send verification email
+    await sendMail({
+      to: user.email,
+      subject: "Verify Your Email",
+      html: `<p>Please verify your email by clicking this link:</p>
+            <a href="${process.env.BASE_URL}/api/v1/user/auth/verify-email/${user.id}">
+              Verify Email
+            </a>`
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Verification email resent successfully"
+    });
+
+  } catch (error) {
+    console.error("Resend verification error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  }
+};
+
