@@ -8,7 +8,7 @@ export default function ResponsiveLayout() {
   const [activeTab, setActiveTab] = useState('home')
   const [isMobile, setIsMobile] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  
+
   // Check if screen is mobile width
   useEffect(() => {
     const checkIfMobile = () => {
@@ -29,7 +29,8 @@ export default function ResponsiveLayout() {
       id: 'home',
       label: 'Home',
       icon: <Home size={24} />,
-      content:<UserDashboard/>
+   content: <UserDashboard setActiveTab={setActiveTab} />
+
     },
     {
       id: 'transaction',
