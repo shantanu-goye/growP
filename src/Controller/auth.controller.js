@@ -464,6 +464,12 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 export const verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
@@ -485,10 +491,10 @@ export const verifyEmail = async (req, res) => {
       ip: req.ip || req.connection.remoteAddress,
     });
 
-    return res.status(200).json({
-      success: true,
-      message: "Email verified successfully",
-    });
+    // Send success HTML page
+    return res
+      .status(200)
+      .sendFile(path.join(__dirname, "public", "email-verified.html"));
   } catch (error) {
     console.error("Email verification error:", error);
 
@@ -498,11 +504,12 @@ export const verifyEmail = async (req, res) => {
       ip: req.ip || req.connection.remoteAddress,
     });
 
-    return res.status(500).json({
-      success: false,
-      message: "Email verification failed",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
-    });
+    // Send failure HTML page
+    return res
+      .status(500)
+      .sendFile(
+        path.join(__dirname, "public", "email-verification-failed.html")
+      );
   }
 };
 
