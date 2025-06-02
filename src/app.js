@@ -32,13 +32,13 @@ app.use(helmet());
 app.use(morgan("dev"));
 
 // Limit repeated requests to public APIs
-app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 500, // Limit each IP to 100 requests per windowMs
-    message: "Too many requests from this IP, please try again later.",
-  })
-);
+// app.use(
+//   rateLimit({
+//     windowMs: 15 * 60 * 1000, // 15 minutes
+//     max: 500, // Limit each IP to 100 requests per windowMs
+//     message: "Too many requests from this IP, please try again later.",
+//   })
+// );
 
 // Parse incoming JSON payloads
 app.use(express.json());
