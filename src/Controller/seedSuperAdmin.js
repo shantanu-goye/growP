@@ -4,14 +4,14 @@ import bcrypt from 'bcrypt';
 const prisma = new PrismaClient();
 
 async function main() {
-  const hashedPassword = await bcrypt.hash('Mn@8087840656', 10);
+  const hashedPassword = await bcrypt.hash('Lokeshadmin@987412', 10);
 
   const superAdmin = await prisma.admin.upsert({
     where: { email: 'superadmin@example.com' },
     update: {},
     create: {
-      name: 'Super Admin',
-      email: 'growp4681@gmail.com',
+      name: 'Lokesh Chaudhary',
+      email: 'chaudharylokesh53284@gmail.com',
       password: hashedPassword,
       role: 'superadmin',
     },
