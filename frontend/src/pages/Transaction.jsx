@@ -39,50 +39,74 @@ export default function TransactionForms() {
   }
 
   // Handle Deposit
-  const handleDeposit = async () => {
-    if (!validateDeposit()) return
+ const handleWithdrawal = async () => {
+  if (!validateWithdrawal()) return;
 
-    setIsSubmitting(true)
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      setTransactionStatus({
-        type: "success",
-        message: "Deposit request submitted successfully"
-      })
+  setIsSubmitting(true);
+  try {
+    const token = localStorage.getItem("token");
 
-      // Reset form
-      setDepositData({ amount: "", utr: "", transactionId: "" })
+    const response = await fetch("https://app.growp.in/api/v1/transactions/withdrawal", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(withdrawalData),
+    });
 
-    } catch (error) {
-      setTransactionStatus({ type: "error", message: error.message })
-    } finally {
-      setIsSubmitting(false)
-    }
+    const result = await response.json();
+
+    if (!response.ok) throw new Error(result.message || "Withdrawal failed");
+
+    setTransactionStatus({
+      type: "success",
+      message: "Withdrawal request submitted successfully"
+    });
+  } catch (error) {
+    setTransactionStatus({ type: "error", message: error.message });
+  } finally {
+    setIsSubmitting(false);
+    setShowConfirmation(false);
   }
+};
+
 
   // Handle Withdrawal
-  const handleWithdrawal = async () => {
-    if (!validateWithdrawal()) return
+ const handleDeposit = async () => {
+  if (!validateDeposit()) return;
 
-    setIsSubmitting(true)
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000))
+  setIsSubmitting(true);
+  try {
+    const token = localStorage.getItem("token");
 
-      setTransactionStatus({
-        type: "success",
-        message: "Withdrawal request submitted successfully"
-      })
+    const response = await fetch("https://app.growp.in/api/v1/transactions/deposit", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(depositData),
+    });
 
-    } catch (error) {
-      setTransactionStatus({ type: "error", message: error.message })
-    } finally {
-      setIsSubmitting(false)
-      setShowConfirmation(false)
-    }
+    const result = await response.json();
+
+    if (!response.ok) throw new Error(result.message || "Deposit failed");
+
+    setTransactionStatus({
+      type: "success",
+      message: "Deposit request submitted successfully"
+    });
+
+    // Reset form
+    setDepositData({ amount: "", utr: "", transactionId: "" });
+  } catch (error) {
+    setTransactionStatus({ type: "error", message: error.message });
+  } finally {
+    setIsSubmitting(false);
   }
+};
+
 
   // Status Alert Component
   const StatusAlert = ({ status }) => {
