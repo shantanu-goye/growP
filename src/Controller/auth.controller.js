@@ -626,3 +626,194 @@ export const resendVerificationEmail = async (req, res) => {
     });
   }
 };
+
+export const updateUserPlan = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { planType } = req.body;
+
+    // Validate required fields
+    if (!userId || !planType) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID and plan type are required",
+      });
+    }
+
+    // Define valid plan types based on your enum
+    const validPlans = ["seed", "plant", "tree"];
+
+    if (!validPlans.includes(planType.toLowerCase())) {
+      await createAuditLog("PLAN_UPDATE_FAILED", userId, {
+        reason: "Invalid plan type",
+        requestedPlan: planType,
+        validPlans,
+        timestamp: new Date().toISOString(),
+        ip: req.ip || req.connection.remoteAddress,
+        userAgent: req.get("User-Agent"),
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: "Invalid plan type. Valid plans are: " + validPlans.join(", "),
+      });
+    }
+
+    await createAuditLog("PLAN_UPDATE_ATTEMPT", userId, {
+      requestedPlan: planType,
+      timestamp: new Date().toISOString(),
+      ip: req.ip || req.connection.remoteAddress,
+      userAgent: req.get("User-Agent"),
+    });
+
+    // Check if user exists and get current plan
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        plan: true,
+        balances: {
+          select: {
+            plan: true,
+            balance: true,
+          },
+        },
+      },
+    });
+
+    if (!existingUser) {
+      await createAuditLog("PLAN_UPDATE_FAILED", userId, {
+        reason: "User not found",
+        requestedPlan: planType,
+        timestamp: new Date().toISOString(),
+        ip: req.ip || req.connection.remoteAddress,
+      });
+
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const previousPlan = existingUser.plan;
+
+    // Check if the plan is already the same
+    if (previousPlan === planType.toLowerCase()) {
+      await createAuditLog("PLAN_UPDATE_SKIPPED", userId, {
+        reason: "Plan already set to requested type",
+        currentPlan: previousPlan,
+        requestedPlan: planType,
+        timestamp: new Date().toISOString(),
+        ip: req.ip || req.connection.remoteAddress,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "User is already on the requested plan",
+        currentPlan: previousPlan,
+      });
+    }
+
+    // Use transaction to update both user plan and create/update balance record
+    const result = await prisma.$transaction(async (tx) => {
+      // Update user's plan
+      const updatedUser = await tx.user.update({
+        where: { id: userId },
+        data: {
+          plan: planType.toLowerCase(),
+          updatedAt: new Date(),
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          plan: true,
+        },
+      });
+
+      // Create or update balance record for the new plan
+      const balanceRecord = await tx.balance.upsert({
+        where: {
+          userId_plan: {
+            userId: userId,
+            plan: planType.toLowerCase(),
+          },
+        },
+        update: {
+          updatedAt: new Date(),
+        },
+        create: {
+          userId: userId,
+          plan: planType.toLowerCase(),
+          balance: 0.0,
+          pendingWithdrawalBalance: 0.0,
+          pendingDepositBalance: 0.0,
+          rewardBalance: 0.0,
+        },
+      });
+
+      return { updatedUser, balanceRecord };
+    });
+
+    // Send notification email about plan change
+    try {
+      await sendMail({
+        to: existingUser.email,
+        subject: "Plan Updated Successfully",
+        html: `
+          <p>Hello ${existingUser.name},</p>
+          <p>Your plan has been successfully updated.</p>
+          <p><strong>Previous Plan:</strong> ${previousPlan}</p>
+          <p><strong>New Plan:</strong> ${planType}</p>
+          <p>Your new plan benefits are now active!</p>
+          <p>If you have any questions, please contact our support team.</p>
+        `,
+      });
+    } catch (emailError) {
+      console.error("Failed to send plan update email:", emailError);
+      // Don't fail the request if email fails
+    }
+
+    await createAuditLog("PLAN_UPDATE_SUCCESS", userId, {
+      previousPlan,
+      newPlan: planType.toLowerCase(),
+      userName: existingUser.name,
+      userEmail: existingUser.email,
+      timestamp: new Date().toISOString(),
+      ip: req.ip || req.connection.remoteAddress,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Plan updated successfully",
+      user: {
+        id: result.updatedUser.id,
+        name: result.updatedUser.name,
+        email: result.updatedUser.email,
+        plan: result.updatedUser.plan,
+      },
+      planUpdate: {
+        previousPlan,
+        newPlan: result.updatedUser.plan,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error("Plan update error:", error);
+
+    await createAuditLog("PLAN_UPDATE_ERROR", req.params?.userId || null, {
+      error: error.message,
+      requestedPlan: req.body?.planType,
+      timestamp: new Date().toISOString(),
+      ip: req.ip || req.connection.remoteAddress,
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update plan",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
