@@ -4,7 +4,7 @@ import {
   getUserById,
   getAllUsers,
   verifyEmail,
-   resendVerificationEmail,
+  resendVerificationEmail,
   getProfileOfUser,
 } from "../Controller/auth.controller.js";
 
@@ -15,13 +15,14 @@ import {
 } from "../Controller/restPassword.controller.js";
 import { Router } from "express";
 import { authenticateToken } from "../middleware/authMiddleware.js";
+import { verifyAdminToken } from "../middleware/adminauthMiddleware.js";
 const router = Router();
 
 router.post("/auth/register", register);
 router.post("/auth/login", login);
 router.get("/auth/users", getAllUsers);
 router.get("/auth/profile", authenticateToken, getProfileOfUser);
-router.get("/auth/users/:id", getUserById);
+router.get("/auth/users/:id", verifyAdminToken, getUserById);
 router.get("/auth/verify-email/:token", verifyEmail);
 router.post("/auth/resend-verification/:email", resendVerificationEmail); // Add thi
 router.post("/auth/password-reset/otp", sendPasswordResetOTP);

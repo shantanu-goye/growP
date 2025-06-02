@@ -1,80 +1,72 @@
 import React, { useState } from "react";
-import logo from "../assets/Untitled_design-removebg-preview.png"
-import { useNavigate } from 'react-router-dom';
+import logo from "../assets/Untitled_design-removebg-preview.png";
+import { useNavigate } from "react-router-dom";
+
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-const navigate = useNavigate(); // ← this line is missing
+  const navigate = useNavigate();
 
-const handleSubmit = async () => {
-  if (!email || !password) {
-    return alert("Please enter both email and password.");
-  }
-
-  if (!acceptedTerms) {
-    return alert("You must accept the Terms and Conditions.");
-  }
-
-  setIsLoading(true);
-  try {
-    const myHeaders = new Headers();
-    myHeaders.append("Content-Type", "application/x-www-form-urlencoded");
-
-    const urlencoded = new URLSearchParams();
-    urlencoded.append("email", email);
-    urlencoded.append("password", password);
-    urlencoded.append("type", "full");
-
-    const response = await fetch("https://app.growp.in/api/v1/user/auth/login", {
-      method: "POST",
-      headers: myHeaders,
-      body: urlencoded,
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.message || "Login failed");
+  const handleSubmit = async () => {
+    if (!email || !password) {
+      return alert("Please enter both email and password.");
     }
 
-    // ✅ Store token and user info in localStorage
-    localStorage.setItem("token", result.token);
-    localStorage.setItem("user", JSON.stringify(result.user));
+    if (!acceptedTerms) {
+      return alert("You must accept the Terms and Conditions.");
+    }
 
-    alert("Login successful!");
-    navigate("/dashboard");
-  } catch (error) {
-    alert(error.message || "Login error occurred");
-  } finally {
-    setIsLoading(false);
-  }
-};
+    setIsLoading(true);
+    try {
+      const myHeaders = new Headers();
+      myHeaders.append("Content-Type", "application/x-www-form-urlencoded");
 
+      const urlencoded = new URLSearchParams();
+      urlencoded.append("email", email);
+      urlencoded.append("password", password);
+      urlencoded.append("type", "full");
 
+      const response = await fetch("https://app.growp.in/api/v1/user/auth/login", {
+        method: "POST",
+        headers: myHeaders,
+        body: urlencoded,
+      });
 
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || "Login failed");
+      }
+
+      localStorage.setItem("token", result.token);
+      localStorage.setItem("user", JSON.stringify(result.user));
+
+      alert("Login successful!");
+      navigate("/dashboard");
+    } catch (error) {
+      alert(error.message || "Login error occurred");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleForgotPassword = () => {
     alert("Forgot password functionality would be implemented here");
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md space-y-3">
-        <div className="text-center ">
-          {/* Fixed logo container */}
+        <div className="text-center">
           <div className="mx-auto w-60 h-40 flex items-center justify-center">
-            {/* In your actual code, replace this placeholder with your logo image */}
-            <div className="">
-         <img 
-  src={logo} 
-  alt="GroWP Logo" 
-  className="w-40 h-40 object-contain mx-auto"
-/>
-
-            </div>
+            <img
+              src={logo}
+              alt="GroWP Logo"
+              className="w-40 h-40 object-contain mx-auto"
+            />
           </div>
 
           <h1 className="text-3xl font-bold text-gray-900">Welcome to GroWP</h1>
@@ -97,7 +89,7 @@ const handleSubmit = async () => {
               <input
                 id="email"
                 type="email"
-                placeholder="Enter your email "
+                placeholder="Enter your email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -131,11 +123,7 @@ const handleSubmit = async () => {
                         stroke="currentColor"
                         strokeWidth="2"
                       />
-                      <path
-                        d="M1 1l22 22"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      />
+                      <path d="M1 1l22 22" stroke="currentColor" strokeWidth="2" />
                     </svg>
                   ) : (
                     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
@@ -192,6 +180,19 @@ const handleSubmit = async () => {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* ✅ Branding Footer */}
+      <div className="text-center text-sm text-gray-400 mt-8">
+        Infrastructure powered by{" "}
+        <a
+          href="https://pixelperfect.dev"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:underline"
+        >
+          PixelPerfect 
+        </a>
       </div>
     </div>
   );
