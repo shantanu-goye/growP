@@ -817,3 +817,312 @@ export const updateUserPlan = async (req, res) => {
     });
   }
 };
+
+
+// Generate a time-based OTP (6 digits, valid for 10 minutes)
+const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+// Create a JWT token containing OTP information
+const createStatusChangeToken = (adminId, userId, newStatus, otp) => {
+  return jwt.sign(
+    {
+      adminId,
+      userId,
+      newStatus,
+      otp,
+      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes expiry
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: '10m' }
+  );
+};
+
+// Verify the status change token
+const verifyStatusChangeToken = (token) => {
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return {
+      valid: true,
+      expired: false,
+      decoded,
+    };
+  } catch (error) {
+    return {
+      valid: false,
+      expired: error.message === 'jwt expired',
+      decoded: null,
+    };
+  }
+};
+
+
+export const sendStatusChangeOTP = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const adminId = req.user.id;
+
+    // Debug logging
+    console.log(`Attempting status change for user ${userId} by admin ${adminId}`);
+
+    await createAuditLog("STATUS_CHANGE_OTP_REQUEST", adminId, {
+      targetUserId: userId,
+      timestamp: new Date().toISOString(),
+      ip: req.ip || req.connection.remoteAddress,
+    });
+
+    // Verify admin exists and has correct role
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+      select: { 
+        id: true,
+        email: true, 
+        name: true,
+        role: true
+      },
+    });
+
+    if (!admin || admin.role !== 'admin') {
+      await createAuditLog("STATUS_CHANGE_OTP_FAILED", adminId, {
+        reason: admin ? "Insufficient privileges" : "Admin not found",
+        targetUserId: userId,
+        timestamp: new Date().toISOString(),
+        ip: req.ip || req.connection.remoteAddress,
+      });
+
+      return res.status(403).json({
+        success: false,
+        message: admin ? "Insufficient privileges" : "Admin not found",
+      });
+    }
+
+    // Check if target user exists
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, isActive: true, email: true },
+    });
+
+    if (!user) {
+      await createAuditLog("STATUS_CHANGE_OTP_FAILED", adminId, {
+        reason: "User not found",
+        targetUserId: userId,
+        timestamp: new Date().toISOString(),
+        ip: req.ip || req.connection.remoteAddress,
+      });
+
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Generate OTP and token
+    const otp = generateOTP();
+    const newStatus = !user.isActive;
+    const statusChangeToken = createStatusChangeToken(adminId, userId, newStatus, otp);
+
+    // Send OTP email
+    await sendMail({
+      to: admin.email,
+      subject: "OTP for User Status Change",
+      template: "statusChangeOTP",
+      context: {
+        adminName: admin.name,
+        userName: user.name,
+        userEmail: user.email,
+        currentStatus: user.isActive ? "Active" : "Inactive",
+        newStatus: newStatus ? "Active" : "Inactive",
+        otp,
+      },
+    });
+
+    await createAuditLog("STATUS_CHANGE_OTP_SENT", adminId, {
+      targetUserId: userId,
+      currentStatus: user.isActive,
+      requestedStatus: newStatus,
+      timestamp: new Date().toISOString(),
+      ip: req.ip || req.connection.remoteAddress,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP sent to admin email",
+      token: statusChangeToken,
+      targetUser: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        currentStatus: user.isActive,
+        requestedStatus: newStatus,
+      },
+    });
+
+  } catch (error) {
+    console.error("Status change OTP error:", error);
+    
+    await createAuditLog("STATUS_CHANGE_OTP_ERROR", req.user?.id || null, {
+      error: error.message,
+      targetUserId: req.params?.userId,
+      timestamp: new Date().toISOString(),
+      ip: req.ip || req.connection.remoteAddress,
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send status change OTP",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+export const verifyStatusChangeOTP = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { otp, token } = req.body;
+    const adminId = req.user.id;
+
+    await createAuditLog("STATUS_CHANGE_VERIFY_ATTEMPT", adminId, {
+      targetUserId: userId,
+      timestamp: new Date().toISOString(),
+      ip: req.ip || req.connection.remoteAddress,
+    });
+
+    if (!otp || !token) {
+      await createAuditLog("STATUS_CHANGE_VERIFY_FAILED", adminId, {
+        reason: "OTP or token not provided",
+        targetUserId: userId,
+        timestamp: new Date().toISOString(),
+        ip: req.ip || req.connection.remoteAddress,
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: "OTP and token are required",
+      });
+    }
+
+    // Verify the token
+    const verification = verifyStatusChangeToken(token);
+
+    if (!verification.valid) {
+      await createAuditLog("STATUS_CHANGE_VERIFY_FAILED", adminId, {
+        reason: verification.expired ? "Token expired" : "Invalid token",
+        targetUserId: userId,
+        timestamp: new Date().toISOString(),
+        ip: req.ip || req.connection.remoteAddress,
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: verification.expired ? "OTP expired" : "Invalid token",
+      });
+    }
+
+    const { decoded } = verification;
+
+    // Verify the OTP matches
+    if (decoded.otp !== otp) {
+      await createAuditLog("STATUS_CHANGE_VERIFY_FAILED", adminId, {
+        reason: "Invalid OTP",
+        targetUserId: userId,
+        timestamp: new Date().toISOString(),
+        ip: req.ip || req.connection.remoteAddress,
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    // Verify the admin and user IDs match
+    if (decoded.adminId !== adminId || decoded.userId !== userId) {
+      await createAuditLog("STATUS_CHANGE_VERIFY_FAILED", adminId, {
+        reason: "Token mismatch with request",
+        targetUserId: userId,
+        tokenUserId: decoded.userId,
+        tokenAdminId: decoded.adminId,
+        timestamp: new Date().toISOString(),
+        ip: req.ip || req.connection.remoteAddress,
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: "Token does not match the request",
+      });
+    }
+
+    // Get user details
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, isActive: true },
+    });
+
+    if (!user) {
+      await createAuditLog("STATUS_CHANGE_VERIFY_FAILED", adminId, {
+        reason: "User not found",
+        targetUserId: userId,
+        timestamp: new Date().toISOString(),
+        ip: req.ip || req.connection.remoteAddress,
+      });
+
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Update user status
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { isActive: decoded.newStatus },
+      select: { id: true, name: true, email: true, isActive: true },
+    });
+
+    // Send notification to user about status change
+    try {
+      await sendMail({
+        to: user.email,
+        subject: `Account ${decoded.newStatus ? "Activated" : "Deactivated"}`,
+        template: "statusChangeNotification",
+        context: {
+          userName: user.name,
+          newStatus: decoded.newStatus ? "activated" : "deactivated",
+          adminName: req.user.name,
+          contactEmail: process.env.SUPPORT_EMAIL || "support@example.com",
+        },
+      });
+    } catch (emailError) {
+      console.error("Failed to send status change email:", emailError);
+    }
+
+    await createAuditLog("STATUS_CHANGE_SUCCESS", adminId, {
+      targetUserId: userId,
+      previousStatus: user.isActive,
+      newStatus: decoded.newStatus,
+      adminAction: true,
+      timestamp: new Date().toISOString(),
+      ip: req.ip || req.connection.remoteAddress,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `User status changed to ${decoded.newStatus ? "Active" : "Inactive"}`,
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error("Status change verify error:", error);
+
+    await createAuditLog("STATUS_CHANGE_VERIFY_ERROR", req.user?.id || null, {
+      error: error.message,
+      targetUserId: req.params?.userId,
+      timestamp: new Date().toISOString(),
+      ip: req.ip || req.connection.remoteAddress,
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to verify and change status",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};

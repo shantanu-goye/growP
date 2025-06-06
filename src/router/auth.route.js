@@ -7,6 +7,8 @@ import {
   resendVerificationEmail,
   getProfileOfUser,
   updateUserPlan,
+  sendStatusChangeOTP,
+  verifyStatusChangeOTP,
 } from "../Controller/auth.controller.js";
 
 import {
@@ -30,4 +32,7 @@ router.post("/auth/password-reset/otp", sendPasswordResetOTP);
 router.post("/auth/password-reset/verify", verifyPasswordResetOTP);
 router.post("/auth/password-reset/reset", resetPasswordWithOTP);
 router.put("/auth/plan/:userId", verifyAdminToken, updateUserPlan);
+
+router.put("/auth/status/:userId", verifyAdminToken, sendStatusChangeOTP);
+router.post("/auth/status/:userId/verify", verifyAdminToken, verifyStatusChangeOTP);
 export default router; // ✅ correct placement
