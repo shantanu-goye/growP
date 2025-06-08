@@ -19,12 +19,14 @@ export async function creditDailyRewards() {
   );
 
   try {
+    // Skip weekends (0 = Sunday, 6 = Saturday)
     const dayOfWeek = today.day();
     if (dayOfWeek === 0 || dayOfWeek === 6) {
       console.log("Today is a weekend. Skipping reward crediting.");
-      return;
+      return { success: 0, skipped: 0, errors: 0, reason: "Weekend" };
     }
 
+    // Check for non-reward days
     const nonRewardDay = await prisma.nonRewardDay.findUnique({
       where: { date: today.toDate() },
     });
@@ -35,15 +37,33 @@ export async function creditDailyRewards() {
           nonRewardDay.reason || "No reason provided"
         }. Skipping.`
       );
-      return;
+      return {
+        success: 0,
+        skipped: 0,
+        errors: 0,
+        reason: `Non-reward day: ${nonRewardDay.reason}`,
+      };
     }
 
+    // Get reward rates
     const rewardRates = await prisma.rewardRateSetting.findMany();
     const ratesByPlan = rewardRates.reduce((acc, rate) => {
       acc[rate.plan] = rate.rate;
       return acc;
     }, /** @type {Record<PlanType, number>} */ ({}));
 
+    // Validate that we have reward rates configured
+    if (Object.keys(ratesByPlan).length === 0) {
+      console.log("No reward rates configured. Skipping reward crediting.");
+      return {
+        success: 0,
+        skipped: 0,
+        errors: 0,
+        reason: "No reward rates configured",
+      };
+    }
+
+    // Get active users (excluding those created in last 3 days)
     const threeDaysAgo = dayjs().subtract(3, "day").toDate();
     const activeUsers = await prisma.user.findMany({
       where: {
@@ -54,9 +74,22 @@ export async function creditDailyRewards() {
     });
 
     console.log(`Processing ${activeUsers.length} users...`);
+    console.log(
+      `Reward rates configured:`,
+      Object.entries(ratesByPlan)
+        .map(
+          ([plan, rate]) =>
+            `${plan}: ${(rate * 365 * 100).toFixed(
+              2
+            )}% annually (${rate.toFixed(6)} daily)`
+        )
+        .join(", ")
+    );
+
     let successCount = 0,
       skipCount = 0,
       errorCount = 0;
+    const processedUsers = [];
 
     for (const user of activeUsers) {
       try {
@@ -79,35 +112,92 @@ export async function creditDailyRewards() {
           continue;
         }
 
-        const dailyReward = currentPlanBalance.balance * rewardRate;
-        if (dailyReward <= 0) {
-          console.log(`No reward to credit for user ${user.id}.`);
+        // Handle zero reward rate (admin can set 0% rate to pause rewards)
+        if (rewardRate === 0) {
+          console.log(
+            `Reward rate is 0% for ${user.plan}. Skipping user ${user.id}.`
+          );
           skipCount++;
           continue;
         }
 
+        // Calculate daily reward
+        const dailyReward = currentPlanBalance.balance * rewardRate;
+
+        if (dailyReward <= 0) {
+          console.log(
+            `No reward to credit for user ${user.id} (balance: ₹${currentPlanBalance.balance}).`
+          );
+          skipCount++;
+          continue;
+        }
+
+        // Credit the reward in a transaction
         await prisma.$transaction(async (tx) => {
-          await tx.balance.update({
+          const updatedBalance = await tx.balance.update({
             where: { id: currentPlanBalance.id },
             data: {
               rewardBalance: { increment: dailyReward },
               updatedAt: new Date(),
             },
           });
+
+          // Log the reward transaction for audit
+          await tx.rewardTransaction.create({
+            data: {
+              userId: user.id,
+              plan: user.plan,
+              principalAmount: currentPlanBalance.balance,
+              rewardRate: rewardRate,
+              rewardAmount: dailyReward,
+              creditedAt: new Date(),
+              balanceId: currentPlanBalance.id,
+            },
+          });
+
+          return updatedBalance;
         });
 
-        console.log(`Credited ₹${dailyReward.toFixed(2)} to ${user.id}`);
+        processedUsers.push({
+          userId: user.id,
+          plan: user.plan,
+          principalAmount: currentPlanBalance.balance,
+          rewardAmount: dailyReward,
+          annualRate: `${(rewardRate * 365 * 100).toFixed(2)}%`,
+        });
+
+        console.log(
+          `✓ User ${user.id} (${
+            user.plan
+          }): ₹${currentPlanBalance.balance.toFixed(2)} × ${(
+            rewardRate *
+            365 *
+            100
+          ).toFixed(2)}% = ₹${dailyReward.toFixed(2)}`
+        );
         successCount++;
       } catch (err) {
-        console.error(`Error crediting user ${user.id}:`, err);
+        console.error(`✗ Error crediting user ${user.id}:`, err);
         errorCount++;
       }
     }
 
+    const summary = {
+      date: today.format("YYYY-MM-DD"),
+      success: successCount,
+      skipped: skipCount,
+      errors: errorCount,
+      totalProcessed: activeUsers.length,
+      totalRewarded: processedUsers.reduce((sum, u) => sum + u.rewardAmount, 0),
+      processedUsers: processedUsers,
+    };
+
     console.log(
       `Reward Summary → Success: ${successCount}, Skipped: ${skipCount}, Errors: ${errorCount}`
     );
-    return { success: successCount, skipped: skipCount, errors: errorCount };
+    console.log(`Total Rewards Credited: ₹${summary.totalRewarded.toFixed(2)}`);
+
+    return summary;
   } catch (err) {
     console.error("Fatal error in reward job:", err);
     throw err;
@@ -117,15 +207,37 @@ export async function creditDailyRewards() {
 }
 
 export function startRewardCronJob() {
-  console.log("Scheduling reward job at midnight...");
-  cron.schedule("0 0 * * *", async () => {
+  console.log("Scheduling reward job at midnight IST...");
+
+  // Run at midnight IST (UTC+5:30) - adjust cron accordingly
+  cron.schedule("30 18 * * *", async () => {
+    // 18:30 UTC = 00:00 IST
     console.log(`Cron Triggered at ${new Date().toISOString()}`);
     try {
-      await creditDailyRewards();
+      const result = await creditDailyRewards();
+      console.log("Scheduled reward crediting completed:", result);
     } catch (err) {
       console.error("Error during scheduled reward crediting:", err);
+
+      // Optional: Send alert/notification to admin
+      // await sendAlertToAdmin("Reward job failed", err.message);
     }
   });
+
+  console.log("Reward cron job scheduled successfully");
+}
+
+// Manual execution function for testing/admin triggers
+export async function runRewardJobManually() {
+  console.log("Manual reward job execution started...");
+  try {
+    const result = await creditDailyRewards();
+    console.log("Manual reward crediting completed:", result);
+    return result;
+  } catch (error) {
+    console.error("Manual execution error:", error);
+    throw error;
+  }
 }
 
 // Entry point if run directly
@@ -145,14 +257,17 @@ if (process.argv[1] === import.meta.url) {
   startRewardCronJob();
 
   if (process.argv.includes("--run-now")) {
-    console.log("Manual run triggered...");
-    creditDailyRewards()
-      .then(() => console.log("Manual reward crediting done"))
+    console.log("Manual run triggered via command line...");
+    runRewardJobManually()
+      .then((result) => {
+        console.log("Manual reward crediting done:", result);
+        process.exit(0);
+      })
       .catch((e) => {
         console.error("Manual execution error:", e);
         process.exit(1);
       });
   }
 
-  console.log("Reward service initialized");
+  console.log("Reward service initialized and running...");
 }
