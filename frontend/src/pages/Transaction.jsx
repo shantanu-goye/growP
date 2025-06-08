@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import qr from "../assets/qr.jpeg"
 
 export default function TransactionForms() {
@@ -9,11 +9,17 @@ export default function TransactionForms() {
     transactionId: ""
   })
   const [withdrawalType, setWithdrawalType] = useState("full")
+  const [customAmount, setCustomAmount] = useState("")
   const [transactionStatus, setTransactionStatus] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isWeekend, setIsWeekend] = useState(false)
   const [formErrors, setFormErrors] = useState({})
   const [showConfirmation, setShowConfirmation] = useState(false)
+  
+  // Debounce refs to prevent multiple submissions
+  const depositTimeoutRef = useRef(null)
+  const withdrawalTimeoutRef = useRef(null)
+  const lastSubmissionRef = useRef(null)
 
   useEffect(() => {
     const today = new Date().getDay()
@@ -25,6 +31,42 @@ export default function TransactionForms() {
     setTransactionStatus(null)
     setFormErrors({})
   }, [activeTab])
+
+  // Clear custom amount when switching withdrawal types
+  useEffect(() => {
+    if (withdrawalType !== "custom") {
+      setCustomAmount("")
+    }
+  }, [withdrawalType])
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (depositTimeoutRef.current) {
+        clearTimeout(depositTimeoutRef.current)
+      }
+      if (withdrawalTimeoutRef.current) {
+        clearTimeout(withdrawalTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  // Debounce utility function
+  const debounce = useCallback((func, delay, timeoutRef) => {
+    return (...args) => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+      timeoutRef.current = setTimeout(() => func(...args), delay)
+    }
+  }, [])
+
+  // Check if submission is too frequent (prevent spam)
+  const canSubmit = useCallback(() => {
+    const now = Date.now()
+    const timeSinceLastSubmission = now - (lastSubmissionRef.current || 0)
+    return timeSinceLastSubmission > 2000 // 2 second minimum between submissions
+  }, [])
 
   // Deposit Validation
   const validateDeposit = () => {
@@ -41,12 +83,26 @@ export default function TransactionForms() {
 
   // Withdrawal Validation
   const validateWithdrawal = () => {
+    const errors = {}
+    
     if (!withdrawalType) {
-      setFormErrors({ type: "Please select withdrawal type" })
-      return false
+      errors.type = "Please select withdrawal type"
     }
-    setFormErrors({})
-    return true
+    
+    if (withdrawalType === "custom") {
+      if (!customAmount || Number(customAmount) < 100) {
+        errors.customAmount = "Custom amount must be at least ₹100"
+      }
+      if (Number(customAmount) > 1000000) {
+        errors.customAmount = "Amount cannot exceed ₹10,00,000"
+      }
+      if (isNaN(Number(customAmount))) {
+        errors.customAmount = "Please enter a valid amount"
+      }
+    }
+    
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
   }
 
   // Get auth token with error handling
@@ -73,9 +129,17 @@ export default function TransactionForms() {
     return error.message || "An unexpected error occurred"
   }
 
-  // Handle Deposit
-  const handleDeposit = async () => {
+  // Handle Deposit with debounce protection
+  const handleDepositInternal = async () => {
     if (!validateDeposit()) return
+
+    if (!canSubmit()) {
+      setTransactionStatus({
+        type: "error",
+        message: "Please wait before submitting again"
+      })
+      return
+    }
 
     const token = getAuthToken()
     if (!token) {
@@ -87,6 +151,8 @@ export default function TransactionForms() {
     }
 
     setIsSubmitting(true)
+    lastSubmissionRef.current = Date.now()
+
     try {
       const response = await fetch("https://app.growp.in/api/v1/transactions/deposit", {
         method: "POST",
@@ -120,9 +186,23 @@ export default function TransactionForms() {
     }
   }
 
-  // Handle Withdrawal
-  const handleWithdrawal = async () => {
+  // Debounced deposit handler
+  const handleDeposit = useCallback(
+    debounce(handleDepositInternal, 300, depositTimeoutRef),
+    [depositData, validateDeposit, canSubmit, getAuthToken, handleApiError]
+  )
+
+  // Handle Withdrawal with debounce protection
+  const handleWithdrawalInternal = async () => {
     if (!validateWithdrawal()) return
+
+    if (!canSubmit()) {
+      setTransactionStatus({
+        type: "error",
+        message: "Please wait before submitting again"
+      })
+      return
+    }
 
     const token = getAuthToken()
     if (!token) {
@@ -134,20 +214,27 @@ export default function TransactionForms() {
     }
 
     setIsSubmitting(true)
+    lastSubmissionRef.current = Date.now()
+
     try {
+      const requestBody = { type: withdrawalType }
+      if (withdrawalType === "custom") {
+        requestBody.customAmount = Number(customAmount)
+      }
+
       const response = await fetch("https://app.growp.in/api/v1/transactions/withdrawal", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ type: withdrawalType }),
+        body: JSON.stringify(requestBody),
       })
 
       const result = await response.json()
 
       if (!response.ok) {
-        throw new Error(handleApiError(result, response))
+        throw new Error(result.message || handleApiError(result, response))
       }
 
       setTransactionStatus({
@@ -157,6 +244,7 @@ export default function TransactionForms() {
 
       // Reset form
       setWithdrawalType("full")
+      setCustomAmount("")
     } catch (error) {
       setTransactionStatus({ 
         type: "error", 
@@ -167,6 +255,12 @@ export default function TransactionForms() {
       setShowConfirmation(false)
     }
   }
+
+  // Debounced withdrawal handler
+  const handleWithdrawal = useCallback(
+    debounce(handleWithdrawalInternal, 300, withdrawalTimeoutRef),
+    [withdrawalType, customAmount, validateWithdrawal, canSubmit, getAuthToken, handleApiError]
+  )
 
   // Status Alert Component
   const StatusAlert = ({ status }) => {
@@ -195,6 +289,17 @@ export default function TransactionForms() {
         <span>{status.message}</span>
       </div>
     )
+  }
+
+  const getConfirmationMessage = () => {
+    switch (withdrawalType) {
+      case "full":
+        return "Full withdrawal will deactivate your account. Are you sure you want to continue?"
+      case "custom":
+        return `Are you sure you want to withdraw ₹${customAmount} from your reward balance?`
+      default:
+        return "Are you sure you want to proceed with reward withdrawal?"
+    }
   }
 
   return (
@@ -336,6 +441,7 @@ export default function TransactionForms() {
               >
                 <option value="full">Full Withdrawal</option>
                 <option value="rewardOnly">Reward Only</option>
+                <option value="custom">Custom Amount</option>
               </select>
               {formErrors.type && (
                 <p id="withdrawal-error" className="text-red-500 text-sm mt-1" role="alert">
@@ -343,6 +449,41 @@ export default function TransactionForms() {
                 </p>
               )}
             </div>
+
+            {/* Custom Amount Input - Only show when custom is selected */}
+            {withdrawalType === "custom" && (
+              <div className="mb-4">
+                <label htmlFor="customAmount" className="block text-gray-700 font-medium mb-2">
+                  Custom Amount (₹) *
+                </label>
+                <div className="relative">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                  </svg>
+                  <input
+                    id="customAmount"
+                    type="number"
+                    value={customAmount}
+                    onChange={(e) => setCustomAmount(e.target.value)}
+                    className={`pl-10 block w-full rounded border p-2 ${
+                      formErrors.customAmount ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                    min="100"
+                    max="1000000"
+                    placeholder="Enter custom amount (min ₹100)"
+                    aria-describedby={formErrors.customAmount ? "custom-amount-error" : undefined}
+                  />
+                </div>
+                {formErrors.customAmount && (
+                  <p id="custom-amount-error" className="text-red-500 text-sm mt-1" role="alert">
+                    {formErrors.customAmount}
+                  </p>
+                )}
+                <p className="text-sm text-gray-500 mt-1">
+                  Note: Custom withdrawals are processed from your reward balance only
+                </p>
+              </div>
+            )}
 
             {isWeekend && (
               <div className="mb-4 p-3 bg-yellow-100 rounded border border-yellow-400" role="alert">
@@ -374,9 +515,7 @@ export default function TransactionForms() {
                 <div className="bg-white p-6 rounded-lg max-w-sm mx-4">
                   <h3 id="modal-title" className="font-bold text-lg mb-4">Confirm Withdrawal</h3>
                   <p className="mb-4">
-                    {withdrawalType === "full" 
-                      ? "Full withdrawal will deactivate your account. Are you sure you want to continue?"
-                      : "Are you sure you want to proceed with reward withdrawal?"}
+                    {getConfirmationMessage()}
                   </p>
                   <div className="flex gap-4">
                     <button

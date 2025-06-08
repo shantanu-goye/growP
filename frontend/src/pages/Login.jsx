@@ -41,8 +41,10 @@ const Login = () => {
         throw new Error(result.message || "Login failed");
       }
 
+      const expiryTime = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
       localStorage.setItem("token", result.token);
       localStorage.setItem("user", JSON.stringify(result.user));
+      localStorage.setItem("tokenExpiry", expiryTime); // ✅ Save expiry
 
       alert("Login successful!");
       navigate("/dashboard");
@@ -182,7 +184,6 @@ const Login = () => {
         </div>
       </div>
 
-      {/* ✅ Branding Footer */}
       <div className="text-center text-sm text-gray-400 mt-8">
         Infrastructure powered by{" "}
         <a
@@ -191,7 +192,7 @@ const Login = () => {
           rel="noopener noreferrer"
           className="text-blue-600 hover:underline"
         >
-          PixelPerfect 
+          PixelPerfect
         </a>
       </div>
     </div>
