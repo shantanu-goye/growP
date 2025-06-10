@@ -73,6 +73,7 @@ model Withdrawal {
 enum WithdrawalType {
   full
   rewardOnly
+  custom
 }
 
 model Deposit {
@@ -160,16 +161,15 @@ model AuditLog {
   createdAt DateTime @default(now())
 }
 
-
 model Admin {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  password  String     // Store hashed password
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String // Store hashed password
   name      String
-  role      AdminRole  @default(admin)
-  isActive  Boolean    @default(true)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  role      AdminRole @default(admin)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 enum AdminRole {

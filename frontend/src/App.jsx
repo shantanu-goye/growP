@@ -6,9 +6,30 @@ import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import LiabilityDisclaimer from "./pages/LiabilityDisclaimer";
 
-// Check if user is authenticated
+// Graceful logout
+const logout = () => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  localStorage.removeItem("tokenExpiry");
+};
+
+// Auth check with expiry
 const isAuthenticated = () => {
-  return !!localStorage.getItem("token");
+  const token = localStorage.getItem("token");
+  const expiry = localStorage.getItem("tokenExpiry");
+
+  if (!token || !expiry) {
+    logout();
+    return false;
+  }
+
+  const now = Date.now();
+  if (now > parseInt(expiry)) {
+    logout();
+    return false;
+  }
+
+  return true;
 };
 
 // Protected route wrapper
