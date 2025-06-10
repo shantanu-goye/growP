@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "nodemon src/app.js",
     "start": "node src/index.mjs",
-    "prisma": "prisma"
+    "prisma": "prisma",
+    "fix-balances": "node prisma/scripts/fixUserBalances.js"
   },
   "author": "Shantanu",
   "license": "MIT",
