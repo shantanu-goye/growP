@@ -632,7 +632,6 @@ export const updateUserPlan = async (req, res) => {
     const { userId } = req.params;
     const { planType } = req.body;
 
-    // Validate required fields
     if (!userId || !planType) {
       return res.status(400).json({
         success: false,
@@ -640,10 +639,10 @@ export const updateUserPlan = async (req, res) => {
       });
     }
 
-    // Define valid plan types based on your enum
     const validPlans = ["seed", "plant", "tree"];
+    const newPlan = planType.toLowerCase();
 
-    if (!validPlans.includes(planType.toLowerCase())) {
+    if (!validPlans.includes(newPlan)) {
       await createAuditLog("PLAN_UPDATE_FAILED", userId, {
         reason: "Invalid plan type",
         requestedPlan: planType,
@@ -655,18 +654,17 @@ export const updateUserPlan = async (req, res) => {
 
       return res.status(400).json({
         success: false,
-        message: "Invalid plan type. Valid plans are: " + validPlans.join(", "),
+        message: `Invalid plan type. Valid plans are: ${validPlans.join(", ")}`,
       });
     }
 
     await createAuditLog("PLAN_UPDATE_ATTEMPT", userId, {
-      requestedPlan: planType,
+      requestedPlan: newPlan,
       timestamp: new Date().toISOString(),
       ip: req.ip || req.connection.remoteAddress,
       userAgent: req.get("User-Agent"),
     });
 
-    // Check if user exists and get current plan
     const existingUser = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -674,19 +672,13 @@ export const updateUserPlan = async (req, res) => {
         name: true,
         email: true,
         plan: true,
-        balances: {
-          select: {
-            plan: true,
-            balance: true,
-          },
-        },
       },
     });
 
     if (!existingUser) {
       await createAuditLog("PLAN_UPDATE_FAILED", userId, {
         reason: "User not found",
-        requestedPlan: planType,
+        requestedPlan: newPlan,
         timestamp: new Date().toISOString(),
         ip: req.ip || req.connection.remoteAddress,
       });
@@ -699,12 +691,11 @@ export const updateUserPlan = async (req, res) => {
 
     const previousPlan = existingUser.plan;
 
-    // Check if the plan is already the same
-    if (previousPlan === planType.toLowerCase()) {
+    if (previousPlan === newPlan) {
       await createAuditLog("PLAN_UPDATE_SKIPPED", userId, {
         reason: "Plan already set to requested type",
         currentPlan: previousPlan,
-        requestedPlan: planType,
+        requestedPlan: newPlan,
         timestamp: new Date().toISOString(),
         ip: req.ip || req.connection.remoteAddress,
       });
@@ -716,13 +707,47 @@ export const updateUserPlan = async (req, res) => {
       });
     }
 
-    // Use transaction to update both user plan and create/update balance record
+    // Perform plan update and balance transfer in transaction
     const result = await prisma.$transaction(async (tx) => {
-      // Update user's plan
+      // Get balance from previous plan
+      const oldBalance = await tx.balance.findUnique({
+        where: {
+          userId_plan: {
+            userId,
+            plan: previousPlan,
+          },
+        },
+      });
+
+      const transferBalance = oldBalance?.balance || 0.0;
+      const transferPendingDeposit = oldBalance?.pendingDepositBalance || 0.0;
+      const transferPendingWithdrawal = oldBalance?.pendingWithdrawalBalance || 0.0;
+      const transferReward = oldBalance?.rewardBalance || 0.0;
+
+      // ✅ First zero out the old plan balance
+      if (oldBalance) {
+        await tx.balance.update({
+          where: {
+            userId_plan: {
+              userId,
+              plan: previousPlan,
+            },
+          },
+          data: {
+            balance: 0.0,
+            pendingDepositBalance: 0.0,
+            pendingWithdrawalBalance: 0.0,
+            rewardBalance: 0.0,
+            updatedAt: new Date(),
+          },
+        });
+      }
+
+      // ✅ Then update the user plan
       const updatedUser = await tx.user.update({
         where: { id: userId },
         data: {
-          plan: planType.toLowerCase(),
+          plan: newPlan,
           updatedAt: new Date(),
         },
         select: {
@@ -733,31 +758,42 @@ export const updateUserPlan = async (req, res) => {
         },
       });
 
-      // Create or update balance record for the new plan
-      const balanceRecord = await tx.balance.upsert({
+      // ✅ Then upsert the new balance and transfer
+      const newBalance = await tx.balance.upsert({
         where: {
           userId_plan: {
-            userId: userId,
-            plan: planType.toLowerCase(),
+            userId,
+            plan: newPlan,
           },
         },
         update: {
+          balance: { increment: transferBalance },
+          pendingDepositBalance: { increment: transferPendingDeposit },
+          pendingWithdrawalBalance: { increment: transferPendingWithdrawal },
+          rewardBalance: { increment: transferReward },
           updatedAt: new Date(),
         },
         create: {
-          userId: userId,
-          plan: planType.toLowerCase(),
-          balance: 0.0,
-          pendingWithdrawalBalance: 0.0,
-          pendingDepositBalance: 0.0,
-          rewardBalance: 0.0,
+          userId,
+          plan: newPlan,
+          balance: transferBalance,
+          pendingDepositBalance: transferPendingDeposit,
+          pendingWithdrawalBalance: transferPendingWithdrawal,
+          rewardBalance: transferReward,
         },
       });
 
-      return { updatedUser, balanceRecord };
+      return {
+        updatedUser,
+        newBalance,
+        transferBalance,
+        transferPendingDeposit,
+        transferPendingWithdrawal,
+        transferReward,
+      };
     });
 
-    // Send notification email about plan change
+    // Send notification email
     try {
       await sendMail({
         to: existingUser.email,
@@ -766,21 +802,32 @@ export const updateUserPlan = async (req, res) => {
           <p>Hello ${existingUser.name},</p>
           <p>Your plan has been successfully updated.</p>
           <p><strong>Previous Plan:</strong> ${previousPlan}</p>
-          <p><strong>New Plan:</strong> ${planType}</p>
+          <p><strong>New Plan:</strong> ${newPlan}</p>
+          <p><strong>Transferred Balances:</strong></p>
+          <ul>
+            <li>Main Balance: ${result.transferBalance.toFixed(2)}</li>
+            <li>Pending Deposit: ${result.transferPendingDeposit.toFixed(2)}</li>
+            <li>Pending Withdrawal: ${result.transferPendingWithdrawal.toFixed(2)}</li>
+            <li>Reward Balance: ${result.transferReward.toFixed(2)}</li>
+          </ul>
           <p>Your new plan benefits are now active!</p>
-          <p>If you have any questions, please contact our support team.</p>
         `,
       });
     } catch (emailError) {
       console.error("Failed to send plan update email:", emailError);
-      // Don't fail the request if email fails
     }
 
     await createAuditLog("PLAN_UPDATE_SUCCESS", userId, {
       previousPlan,
-      newPlan: planType.toLowerCase(),
+      newPlan,
       userName: existingUser.name,
       userEmail: existingUser.email,
+      transferredBalances: {
+        balance: result.transferBalance,
+        pendingDeposit: result.transferPendingDeposit,
+        pendingWithdrawal: result.transferPendingWithdrawal,
+        reward: result.transferReward,
+      },
       timestamp: new Date().toISOString(),
       ip: req.ip || req.connection.remoteAddress,
     });
@@ -797,6 +844,12 @@ export const updateUserPlan = async (req, res) => {
       planUpdate: {
         previousPlan,
         newPlan: result.updatedUser.plan,
+        transferredBalances: {
+          balance: result.transferBalance,
+          pendingDeposit: result.transferPendingDeposit,
+          pendingWithdrawal: result.transferPendingWithdrawal,
+          reward: result.transferReward,
+        },
         updatedAt: new Date().toISOString(),
       },
     });
