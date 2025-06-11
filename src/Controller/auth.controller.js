@@ -707,9 +707,8 @@ export const updateUserPlan = async (req, res) => {
       });
     }
 
-    // Perform plan update and balance transfer in transaction
+    // ✅ Perform transaction: delete old balance, create new one, update plan
     const result = await prisma.$transaction(async (tx) => {
-      // Get balance from previous plan
       const oldBalance = await tx.balance.findUnique({
         where: {
           userId_plan: {
@@ -719,31 +718,50 @@ export const updateUserPlan = async (req, res) => {
         },
       });
 
-      const transferBalance = oldBalance?.balance || 0.0;
-      const transferPendingDeposit = oldBalance?.pendingDepositBalance || 0.0;
-      const transferPendingWithdrawal = oldBalance?.pendingWithdrawalBalance || 0.0;
-      const transferReward = oldBalance?.rewardBalance || 0.0;
-
-      // ✅ First zero out the old plan balance
-      if (oldBalance) {
-        await tx.balance.update({
-          where: {
-            userId_plan: {
-              userId,
-              plan: previousPlan,
-            },
-          },
-          data: {
-            balance: 0.0,
-            pendingDepositBalance: 0.0,
-            pendingWithdrawalBalance: 0.0,
-            rewardBalance: 0.0,
-            updatedAt: new Date(),
-          },
-        });
+      if (!oldBalance) {
+        throw new Error("User has no existing balance for the current plan.");
       }
 
-      // ✅ Then update the user plan
+      const {
+        balance: transferBalance,
+        pendingDepositBalance: transferPendingDeposit,
+        pendingWithdrawalBalance: transferPendingWithdrawal,
+        rewardBalance: transferReward,
+      } = oldBalance;
+
+      // Optional: Archive audit log of old balance
+      await createAuditLog("PLAN_BALANCE_ARCHIVE", userId, {
+        archivedPlan: previousPlan,
+        balance: transferBalance,
+        pendingDepositBalance: transferPendingDeposit,
+        pendingWithdrawalBalance: transferPendingWithdrawal,
+        rewardBalance: transferReward,
+        archivedAt: new Date().toISOString(),
+      });
+
+      // 1. Delete old balance
+      await tx.balance.delete({
+        where: {
+          userId_plan: {
+            userId,
+            plan: previousPlan,
+          },
+        },
+      });
+
+      // 2. Create new balance with new plan
+      const newBalance = await tx.balance.create({
+        data: {
+          userId,
+          plan: newPlan,
+          balance: transferBalance,
+          pendingDepositBalance: transferPendingDeposit,
+          pendingWithdrawalBalance: transferPendingWithdrawal,
+          rewardBalance: transferReward,
+        },
+      });
+
+      // 3. Update user’s plan
       const updatedUser = await tx.user.update({
         where: { id: userId },
         data: {
@@ -758,31 +776,6 @@ export const updateUserPlan = async (req, res) => {
         },
       });
 
-      // ✅ Then upsert the new balance and transfer
-      const newBalance = await tx.balance.upsert({
-        where: {
-          userId_plan: {
-            userId,
-            plan: newPlan,
-          },
-        },
-        update: {
-          balance: { increment: transferBalance },
-          pendingDepositBalance: { increment: transferPendingDeposit },
-          pendingWithdrawalBalance: { increment: transferPendingWithdrawal },
-          rewardBalance: { increment: transferReward },
-          updatedAt: new Date(),
-        },
-        create: {
-          userId,
-          plan: newPlan,
-          balance: transferBalance,
-          pendingDepositBalance: transferPendingDeposit,
-          pendingWithdrawalBalance: transferPendingWithdrawal,
-          rewardBalance: transferReward,
-        },
-      });
-
       return {
         updatedUser,
         newBalance,
@@ -793,7 +786,7 @@ export const updateUserPlan = async (req, res) => {
       };
     });
 
-    // Send notification email
+    // ✅ Send notification email
     try {
       await sendMail({
         to: existingUser.email,
@@ -817,6 +810,7 @@ export const updateUserPlan = async (req, res) => {
       console.error("Failed to send plan update email:", emailError);
     }
 
+    // ✅ Final audit log
     await createAuditLog("PLAN_UPDATE_SUCCESS", userId, {
       previousPlan,
       newPlan,
@@ -832,6 +826,7 @@ export const updateUserPlan = async (req, res) => {
       ip: req.ip || req.connection.remoteAddress,
     });
 
+    // ✅ Final response
     return res.status(200).json({
       success: true,
       message: "Plan updated successfully",
