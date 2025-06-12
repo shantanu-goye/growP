@@ -143,17 +143,17 @@ export async function creditDailyRewards() {
           });
 
           // Log the reward transaction for audit
-          // await tx.rewardTransaction.create({
-          //   data: {
-          //     userId: user.id,
-          //     plan: user.plan,
-          //     principalAmount: currentPlanBalance.balance,
-          //     rewardRate: rewardRate,
-          //     rewardAmount: dailyReward,
-          //     creditedAt: new Date(),
-          //     balanceId: currentPlanBalance.id,
-          //   },
-          // });
+          await tx.rewardTransaction.create({
+            data: {
+              userId: user.id,
+              plan: user.plan,
+              principalAmount: currentPlanBalance.balance,
+              rewardRate: rewardRate,
+              rewardAmount: dailyReward,
+              creditedAt: new Date(),
+              balanceId: currentPlanBalance.id,
+            },
+          });
 
           return updatedBalance;
         });
@@ -210,7 +210,8 @@ export function startRewardCronJob() {
   console.log("Scheduling reward job at midnight IST...");
 
   // Run at midnight IST (UTC+5:30) - adjust cron accordingly
-  cron.schedule("30 18 * * *", async () => {
+  cron.schedule("30 10 * * *", async () => {
+    // 10:30 UTC = 16:00 IST
     // 18:30 UTC = 00:00 IST
     console.log(`Cron Triggered at ${new Date().toISOString()}`);
     try {
