@@ -143,17 +143,17 @@ export async function creditDailyRewards() {
           });
 
           // Log the reward transaction for audit
-          await tx.rewardTransaction.create({
-            data: {
-              userId: user.id,
-              plan: user.plan,
-              principalAmount: currentPlanBalance.balance,
-              rewardRate: rewardRate,
-              rewardAmount: dailyReward,
-              creditedAt: new Date(),
-              balanceId: currentPlanBalance.id,
-            },
-          });
+          // await tx.rewardTransaction.create({
+          //   data: {
+          //     userId: user.id,
+          //     plan: user.plan,
+          //     principalAmount: currentPlanBalance.balance,
+          //     rewardRate: rewardRate,
+          //     rewardAmount: dailyReward,
+          //     creditedAt: new Date(),
+          //     balanceId: currentPlanBalance.id,
+          //   },
+          // });
 
           return updatedBalance;
         });
