@@ -173,9 +173,9 @@ export const createWithdrawal = async (req, res) => {
       const { balance: totalBalance, rewardBalance, plan } = balance;
 
       const minRequiredBalance = {
-        seed: 5000,
-        plant: 10000,
-        tree: 15000,
+        seed: 100,
+        plant: 100,
+        tree: 100,
       };
 
       const minBalance = minRequiredBalance[plan];
