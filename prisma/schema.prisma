@@ -112,6 +112,17 @@ model NonRewardDay {
   createdAt DateTime @default(now())
 }
 
+model RewardTransaction {
+  id              String   @id @default(cuid())
+  userId          String
+  plan            PlanType
+  principalAmount Float
+  rewardRate      Float
+  rewardAmount    Float
+  creditedAt      DateTime
+  balanceId       String
+}
+
 
 model Notification {
   id       String                @id @default(cuid())
