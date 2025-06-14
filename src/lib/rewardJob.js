@@ -17,12 +17,6 @@ export async function creditDailyRewards() {
   const today = dayjs().utc().startOf("day");
   console.log(`Starting daily reward crediting for ${today.format("YYYY-MM-DD")}`);
 
-  const dayOfWeek = today.day();
-  if (dayOfWeek === 0 || dayOfWeek === 6) {
-    console.log("Weekend. Skipping reward crediting.");
-    return { success: 0, skipped: 0, errors: 0, reason: "Weekend" };
-  }
-
   const nonRewardDay = await prisma.nonRewardDay.findUnique({ where: { date: today.toDate() } });
   if (nonRewardDay) {
     console.log(`Non-reward day: ${nonRewardDay.reason || "No reason"}`);
