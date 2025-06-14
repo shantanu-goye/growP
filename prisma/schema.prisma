@@ -60,7 +60,7 @@ model Withdrawal {
   userId        String
   user          User              @relation(fields: [userId], references: [id])
   amount        Float
-  transactionId String            @unique // Added unique constraint
+  transactionId String?           @unique // Added unique constraint
   withdrawalId  String            @unique
   balanceBefore Float
   type          WithdrawalType
@@ -122,7 +122,6 @@ model RewardTransaction {
   creditedAt      DateTime
   balanceId       String
 }
-
 
 model Notification {
   id       String                @id @default(cuid())

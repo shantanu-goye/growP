@@ -552,4 +552,4 @@ export const getAllWithdrawals = async (req, res) => {
     handleTransactionError(res, error, "Get All Withdrawals");
   }
 };
-``
+``;
