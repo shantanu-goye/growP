@@ -11,13 +11,13 @@ const dailyToAnnual = (dailyRate) => dailyRate * 365;
 export const getRewardRates = async (req, res) => {
   try {
     const rates = await prisma.rewardRateSetting.findMany();
-    
+
     // Convert daily rates back to annual percentages for display
-    const formattedRates = rates.map(rate => ({
+    const formattedRates = rates.map((rate) => ({
       ...rate,
-      annualPercentage: (dailyToAnnual(rate.rate) * 100).toFixed(2) // Convert to percentage
+      annualPercentage: (dailyToAnnual(rate.rate) * 100).toFixed(2), // Convert to percentage
     }));
-    
+
     res.status(200).json({ success: true, data: formattedRates });
   } catch (error) {
     res.status(500).json({
@@ -31,9 +31,9 @@ export const getRewardRates = async (req, res) => {
 export const updateRewardRate = async (req, res) => {
   try {
     const { plan } = req.params;
-    let { rate, isAnnualPercentage = true } = req.body;
-    const adminId = req.user?.id || req.headers['admin-id']; // Fix hardcoded admin
-    
+    let { rate } = req.body;
+    const adminId = req.user?.id || req.headers["admin-id"];
+
     if (!adminId) {
       return res.status(401).json({
         success: false,
@@ -43,61 +43,44 @@ export const updateRewardRate = async (req, res) => {
 
     rate = Number(rate);
 
-    // Validate rate
-    if (rate === undefined || rate === null || isNaN(rate)) {
+    // Validate the input
+    if (isNaN(rate) || rate <= 0 || rate > 100) {
       return res.status(400).json({
         success: false,
-        message: "Valid rate is required",
+        message: "Rate must be a percentage > 0 and ≤ 100",
       });
     }
 
-    // Convert annual percentage to daily rate if needed
-    if (isAnnualPercentage) {
-      // Validate annual percentage (10% to 100%)
-      if (rate < 10 || rate > 100) {
-        return res.status(400).json({
-          success: false,
-          message: "Annual rate must be between 10% and 100%",
-        });
-      }
-      // Convert percentage to decimal then to daily rate
-      rate = annualToDaily(rate / 100);
-    } else {
-      // Direct daily rate input - validate reasonable bounds
-      if (rate < 0.000274 || rate > 0.00274) { // ~10% to 100% annually
-        return res.status(400).json({
-          success: false,
-          message: "Daily rate must be between 0.000274 and 0.00274",
-        });
-      }
-    }
+    // Convert % to daily rate: e.g., 1 → 0.01, 0.25 → 0.0025
+    const dailyRate = rate / 100;
 
-    // Get old rate for audit logging
+    // Fetch old rate
     const oldRate = await prisma.rewardRateSetting.findUnique({
       where: { plan },
     });
 
+    // Save updated rate
     const updatedRate = await prisma.rewardRateSetting.upsert({
       where: { plan },
-      update: { rate },
-      create: { plan, rate },
+      update: { rate: dailyRate },
+      create: { plan, rate: dailyRate },
     });
 
-    // Log the action with both daily and annual rates for clarity
+    // Optional: log the change
     await logAction(adminId, "REWARD_RATE_UPDATE", {
       plan,
-      oldDailyRate: oldRate?.rate || null,
-      newDailyRate: rate,
-      oldAnnualPercent: oldRate ? (dailyToAnnual(oldRate.rate) * 100).toFixed(2) : null,
-      newAnnualPercent: (dailyToAnnual(rate) * 100).toFixed(2),
+      oldRate: oldRate?.rate ?? null,
+      newRate: dailyRate,
+      rawInputPercentage: rate,
     });
 
     res.status(200).json({
       success: true,
       message: "Reward rate updated",
       data: {
-        ...updatedRate,
-        annualPercentage: (dailyToAnnual(rate) * 100).toFixed(2)
+        plan,
+        storedDailyRate: dailyRate,
+        asPercentage: (dailyRate * 100).toFixed(2) + "%",
       },
     });
   } catch (error) {
@@ -141,7 +124,7 @@ export const getNonRewardDays = async (req, res) => {
 export const createNonRewardDay = async (req, res) => {
   try {
     const { date, reason } = req.body;
-    const createdBy = req.user?.id || req.headers['admin-id']; // Fix hardcoded admin
+    const createdBy = req.user?.id || req.headers["admin-id"]; // Fix hardcoded admin
 
     if (!createdBy) {
       return res.status(401).json({
@@ -199,7 +182,7 @@ export const createNonRewardDay = async (req, res) => {
 export const deleteNonRewardDay = async (req, res) => {
   try {
     const { id } = req.params;
-    const adminId = req.user?.id || req.headers['admin-id']; // Make consistent
+    const adminId = req.user?.id || req.headers["admin-id"]; // Make consistent
 
     if (!adminId) {
       return res.status(401).json({
