@@ -13,21 +13,46 @@ dayjs.extend(isSameOrBefore);
 
 const prisma = new PrismaClient();
 
+// Updated daily reward rates per plan
+const fixedRates = {
+  seed: 0.0025, // 0.25%
+  plant: 0.005, // 0.50%
+  tree: 0.01, // 1.00%
+};
+
 export async function creditDailyRewards() {
   const today = dayjs().utc().startOf("day");
-  console.log(`Starting daily reward crediting for ${today.format("YYYY-MM-DD")}`);
+  const dayOfWeek = today.day(); // 0 = Sunday, 6 = Saturday
 
-  const nonRewardDay = await prisma.nonRewardDay.findUnique({ where: { date: today.toDate() } });
-  if (nonRewardDay) {
-    console.log(`Non-reward day: ${nonRewardDay.reason || "No reason"}`);
-    return { success: 0, skipped: 0, errors: 0, reason: `Non-reward day: ${nonRewardDay.reason}` };
+  console.log(
+    `Starting daily reward crediting for ${today.format("YYYY-MM-DD")}`
+  );
+
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    console.log("Weekend detected. Skipping rewards.");
+    return { success: 0, skipped: 0, errors: 0, reason: "Weekend" };
   }
 
-  const rewardRates = await prisma.rewardRateSetting.findMany();
-  const ratesByPlan = rewardRates.reduce((acc, rate) => {
-    acc[rate.plan] = rate.rate;
-    return acc;
-  }, /** @type {Record<PlanType, number>} */({}));
+  const nonRewardDay = await prisma.nonRewardDay.findUnique({
+    where: { date: today.toDate() },
+  });
+  if (nonRewardDay) {
+    console.log(`Non-reward day: ${nonRewardDay.reason || "No reason"}`);
+    return {
+      success: 0,
+      skipped: 0,
+      errors: 0,
+      reason: `Non-reward day: ${nonRewardDay.reason}`,
+    };
+  }
+
+  // const rewardRates = await prisma.rewardRateSetting.findMany();
+  // const ratesByPlan = rewardRates.reduce((acc, rate) => {
+  //   acc[rate.plan] = rate.rate;
+  //   return acc;
+  // }, /** @type {Record<PlanType, number>} */({}));
+
+  const ratesByPlan = fixedRates; // using hardcoded rates
 
   if (Object.keys(ratesByPlan).length === 0) {
     console.log("No reward rates configured. Skipping.");
@@ -44,7 +69,9 @@ export async function creditDailyRewards() {
 
   console.log(`Processing ${activeUsers.length} users...`);
 
-  let success = 0, skipped = 0, errors = 0;
+  let success = 0,
+    skipped = 0,
+    errors = 0;
   const processed = [];
 
   for (const user of activeUsers) {
@@ -52,8 +79,15 @@ export async function creditDailyRewards() {
       const balance = user.balances.find((b) => b.plan === user.plan);
       const rate = ratesByPlan[user.plan];
 
-      if (!balance || rate === undefined || rate === 0 || balance.balance <= 0) {
-        console.log(`Skipping user ${user.id} due to missing data or zero rate.`);
+      if (
+        !balance ||
+        rate === undefined ||
+        rate === 0 ||
+        balance.balance <= 0
+      ) {
+        console.log(
+          `Skipping user ${user.id} due to missing data or zero rate.`
+        );
         skipped++;
         continue;
       }
