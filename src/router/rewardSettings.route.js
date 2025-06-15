@@ -10,12 +10,12 @@ import { verifyAdminToken } from "../middleware/adminauthMiddleware.js";
 const router = express.Router();
 
 // Reward Rate Settings Routes
-router.get("/reward-rates", verifyAdminToken, getRewardRates);
-router.put("/reward-rates/:plan", verifyAdminToken, updateRewardRate);
+router.get("/reward-rates", getRewardRates);
+router.put("/reward-rates/:plan", updateRewardRate);
 
 // Non Reward Days Routes
-router.get("/non-reward-days", verifyAdminToken, getNonRewardDays);
-router.post("/non-reward-days", verifyAdminToken, createNonRewardDay);
-router.delete("/non-reward-days/:id", verifyAdminToken, deleteNonRewardDay);
+router.get("/non-reward-days", getNonRewardDays);
+router.post("/non-reward-days", createNonRewardDay);
+router.delete("/non-reward-days/:id", deleteNonRewardDay);
 
 export default router;
