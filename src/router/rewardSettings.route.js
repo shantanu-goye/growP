@@ -8,14 +8,14 @@ import {
 } from "../Controller/rewardSettings.controller.js";
 
 const router = express.Router();
-import { authenticateToken } from "../middleware/authMiddleware.js";
+import { verifyAdminToken } from "../middleware/adminauthMiddleware.js";
 // Reward Rate Settings Routes
 router.get("/reward-rates", authenticateToken, getRewardRates);
 router.put("/reward-rates/:plan", authenticateToken, updateRewardRate);
 
 // Non Reward Days Routes
-router.get("/non-reward-days", authenticateToken, getNonRewardDays);
-router.post("/non-reward-days", authenticateToken, createNonRewardDay);
-router.delete("/non-reward-days/:id", authenticateToken, deleteNonRewardDay);
+router.get("/non-reward-days", verifyAdminToken, getNonRewardDays);
+router.post("/non-reward-days", verifyAdminToken, createNonRewardDay);
+router.delete("/non-reward-days/:id", verifyAdminToken, deleteNonRewardDay);
 
 export default router;
