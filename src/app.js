@@ -18,9 +18,14 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 // Enable CORS
+
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "*", // Adjust for production
+    origin: [
+      "http://localhost:3000",
+      "https://app.growp.in",
+      "https://admin.growp.in",
+    ],
     credentials: true,
   })
 );
@@ -58,10 +63,10 @@ import authRoutes from "./router/auth.route.js";
 import adminRoutes from "./router/admin.auth.route.js";
 import tranasctionRoute from "./router/transaction.route.js";
 import rewardSettingRoute from "./router/rewardSettings.route.js";
-import notifcationRouter from "./router/notification.route.js"
-import { startRewardCronJob,creditDailyRewards} from "./lib/rewardJob.js";
+import notifcationRouter from "./router/notification.route.js";
+import { startRewardCronJob, creditDailyRewards } from "./lib/rewardJob.js";
 
- startRewardCronJob(); // Start the reward cron job
+startRewardCronJob(); // Start the reward cron job
 creditDailyRewards(); // Uncomment to run immediately for testing
 app.use("/api/v1/user", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
