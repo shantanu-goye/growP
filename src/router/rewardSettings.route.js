@@ -6,9 +6,9 @@ import {
   createNonRewardDay,
   deleteNonRewardDay,
 } from "../Controller/rewardSettings.controller.js";
-
-const router = express.Router();
 import { verifyAdminToken } from "../middleware/adminauthMiddleware.js";
+const router = express.Router();
+
 // Reward Rate Settings Routes
 router.get("/reward-rates", authenticateToken, getRewardRates);
 router.put("/reward-rates/:plan", authenticateToken, updateRewardRate);
